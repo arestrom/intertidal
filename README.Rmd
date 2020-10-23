@@ -17,21 +17,22 @@ options(tibble.print_min = 5, tibble.print_max = 5)
 
 ## Overview
 
-This repository contains scripts needed to push survey data to the WDFW shellfish database, and once all data are present, generate harvest estimates for intertidal clam and oyster harvest for public beaches in Puget Sound, and adjoining waters. Methods used to generate harvest estimates for these beaches are defined in [Strom and Bradbury, 2007](https://wdfw.wa.gov/publications/00944). 
+This repository contains scripts needed to proof, store, and analyze data used to generate intertidal clam and oyster harvest estimates for public beaches in the Puget Sound basin. Methods used to calculate harvest are defined in [Strom and Bradbury, 2007](https://wdfw.wa.gov/publications/00944). 
 
 ## Folder structure
 
-The scripts are organized in numbered folders to facilitate a workflow I've found useful in the past to organize, load, and analyze the data needed to produce annual harvest estimates. 
+The scripts are organized in a set of sequential folders to facilitate a step-by-step workflow. Steps proceed as follows: 
+
+* **Beach** (polygons of all beaches surveyed, for data entry)
+* **Creel** (catch per unit effort data from creel surveys)
+* **Flight** (counts of harvesters, includes ground-counts, and zero-counts)
+* **Seasons** (dates of open and closed seasons for managed beaches)
+* **Shares** (harvest shares, determined by State-Tribal agreements)
+
+Each set of scripts typically includes notes in the header to document any annual changes, issues, or special circumstances. Each folder also includes a *data* subfolder to hold any needed raw data files. In the future, once a front-end to the WDFW shellfish database has been created, most of these scripts and subfolders will no longer be needed. Raw data can then be entered directly using a web-interface, or via automated procedures from mobile devices. Scripts to generate annual harvest estimates and projections for the following year are stored at the top level.  
+
 
 ## Permissions
 
-In order to use the scripts in this repository you **must** first be granted permissions to the shellfish database. STOPPED HERE !!!!!!
+In order to use the scripts in this repository you **must** first be granted permissions to the shellfish database. Database credentials are defined using the internal .Renviron file. This avoids hard-coding usernames or passwords anywhere in the scripts. 
 
-
-After the application is launched you will then need to enter the password for the database into the login panel. There is no need to manually enter a user name. The user name field is set by default to be the same as the user name of the person that logged into the computer,  and can not be edited. This is by design. It allows recording the user name to the database `created_by` or `modified_by` fields anytime new entries, updates, or edits are committed. 
-
-### In case of failure  
-
-If after installing the application, it crashes, or fails to load, navigate to the `out.txt` folder in the App directory: `C:\Documents\Apps\Baseline\out.txt`. The `out.txt` file will log the first fatal error encountered. Please include this information when reporting the error.
-
-In case of failure, you may also need to kill any active `R` processes using Windows Task Manager. Click `Ctrl-Alt-Delete` to open Task Manager. Then in the `Processes` tab, look for any processes named `R for Windows front-end` or `R for Windows terminal front-end`. You can right-click on these and select `End task` to terminate the process. 
