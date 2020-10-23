@@ -381,3 +381,33 @@ db_con = pg_con_prod(dbname = "shellfish")
 DBI::dbExecute(db_con, "DROP TABLE beach_history_temp")
 DBI::dbDisconnect(db_con)
 
+#============================================================================================
+# Final check to verify the same number of rows exist in both local and production DBs
+#============================================================================================
+
+# Get table names and row counts
+local_row_counts = db_table_counts(db_server = "local")
+prod_row_counts = db_table_counts(db_server = "prod")
+
+# Combine to a dataframe
+compare_counts = local_row_counts %>%
+  left_join(prod_row_counts, by = "table") %>%
+  # Ignore tables that exist in local but not prod
+  filter(!table %in% c("geometry_columns", "geometry_columns", "spatial_ref_sys")) %>%
+  filter(!substr(table, 1, 10) == "beach_info") %>%
+  filter(!substr(table, 1, 12) == "flight_count") %>%
+  # Pull out and rename
+  select(table, local = row_count.x, prod = row_count.y) %>%
+  mutate(row_diff = abs(local - prod))
+
+# Inspect any differences
+diff_counts = compare_counts %>%
+  filter(!row_diff == 0L)
+
+# Output message
+if ( nrow(diff_counts) > 0 ) {
+  cat("\nWARNING: Some row counts differ. Inspect 'diff_counts'.\n\n")
+} else {
+  cat("\nRow counts are the same. Ok to proceed.\n\n")
+}
+
