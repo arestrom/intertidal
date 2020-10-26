@@ -285,17 +285,22 @@ flt_beach = flt_beach %>%
 # Check if geometry is valid
 all(st_is_valid(flt_beach))
 
-# If not all are valid then use following code to identify where invalid data exists
-invalid_polys = flt_beach %>%
-  mutate(chk_poly = st_is_valid(., reason = TRUE)) %>%
-  filter(!chk_poly == "Valid Geometry")
+# Check for valid geometry
+chk_geometry = flt_beach %>%
+  mutate(valid_flag = st_is_valid(geometry)) %>%
+  filter(valid_flag == FALSE)
 
-# Output message
-if ( nrow(invalid_polys) > 0 ) {
-  cat("\nWARNING: Not all polygons are valid. Do not pass go! Inspect 'invalid_polys' dataset!\n\n")
+# Warn if any invalid
+if (nrow(chk_geometry) > 0) {
+  cat("\nWARNING: At least one polygon invalid. Do not pass go!\n\n")
+  chk_geometry
 } else {
   cat("\nAll polygons are valid. Ok to proceed.\n\n")
 }
+
+# Identify where geometry is invalid
+st_is_valid(chk_geometry$geometry, reason = TRUE)[[1]]
+chk_geometry$beach_name[[1]]
 
 #==================================================================================
 # Prepare current_year beach polygons so they can be written to the DB
