@@ -5,7 +5,7 @@
 #  1.
 #
 #  ToDo:
-# 1.
+# 1. Look at line 1212. Need to determine how to handle !!!!!
 #
 # AS 2020-10-23
 #=================================================================
@@ -110,6 +110,14 @@ hm_to_min = function(x) {
   mn = as.integer(substr(x, 4, 5))
   mins = hr + mn
   mins
+}
+
+# Function to convert time in minutes from midnight to h:m
+min_to_hm = function(x) {
+  h = floor(x / 60)
+  m = x %% 60
+  hm = paste0(h, ":", m)
+  return(hm)
 }
 
 #============================================================================================
@@ -470,90 +478,128 @@ proof_path = glue("C:\\data\\intertidal\\Apps\\gis\\{current_year}\\")
 # Check for errant obs_time values in flt_obs
 #=============================================================================
 
-# Get the lowest Seattle tide times for each day in the year Mar-Sept
-qry = glue("select t.low_tide_datetime, t.tide_height_feet, s.tide_strata_code ",
-           "from tide as t inner join tide_strata_lut as s on t.tide_strata_id = s.tide_strata_id ",
-           "where tide_station_location_id = '74c2ccff-2a7d-47e0-99f5-0c4c8d96ca5c' ",
-           "and date_part('Year', low_tide_datetime) = {current_year} ",
-           "order by low_tide_datetime")
+# Get tide times data
+qry = glue("select distinct t.low_tide_datetime as tide_date, pl.location_name as tide_station, ",
+           "t.tide_time_minutes as tide_time, t.tide_height_feet as tide_height, ",
+           "ts.tide_strata_code as tide_strata ",
+           "from tide as t ",
+           "left join point_location as pl ",
+           "on t.tide_station_location_id = pl.point_location_id ",
+           "left join tide_strata_lut as ts ",
+           "on t.tide_strata_id = ts.tide_strata_id ",
+           "where date_part('Year', t.low_tide_datetime) = {current_year} ",
+           "order by t.low_tide_datetime")
 
-# Read
+# Run the query
 db_con = pg_con_local(dbname = "shellfish")
 tide_times = dbGetQuery(db_con, qry)
 dbDisconnect(db_con)
 
+# Explicitly convert timezones
+tide_times = tide_times %>%
+  mutate(tide_date = with_tz(tide_date, tzone = "America/Los_Angeles")) %>%
+  mutate(tide_date = format(tide_date))
+
+# Check if any tide_times strata differ by date...should only be Seattle strata...All Ok
+time_check = tide_times %>%
+  select(tide_date, tide_strata) %>%
+  distinct() %>%
+  group_by(tide_date) %>%
+  mutate(n_seq = row_number()) %>%
+  ungroup() %>%
+  filter(n_seq > 1)
+
 # Reduce down to only lowest tide per day
 tides = tide_times %>%
-  mutate(low_tide_datetime = with_tz(low_tide_datetime, tzone = "America/Los_Angeles")) %>%
+  rename(low_tide_datetime = tide_date) %>%
   mutate(mnth = as.integer(month(low_tide_datetime))) %>%
-  filter(mnth %in% seq(3, 9)) %>%
-  filter(!tide_strata_code == "NIGHT") %>%
+  filter(mnth %in% seq(2, 9)) %>%
+  filter(!tide_strata == "NIGHT") %>%
   mutate(tide_date = substr(format(low_tide_datetime), 1, 10)) %>%
-  arrange(tide_date, tide_height_feet) %>%
-  group_by(tide_date) %>%
-  mutate(n_seq = row_number(tide_date)) %>%
-  ungroup() %>%
-  filter(n_seq == 1L) %>%
-  mutate(tide_time = substr(format(low_tide_datetime), 12, 16)) %>%
+  arrange(tide_date, tide_height) %>%
+  mutate(tide_time_hm = min_to_hm(tide_time)) %>%
   mutate(flt_date = tide_date) %>%
-  select(flt_date, tide_time, tide_height_feet, tide_strata_code)
+  select(flt_date, tide_station, tide_time_hm, tide_time, tide_height, tide_strata)
+
+# Filter down to only one tide per day
+tides = tides %>%
+  arrange(flt_date, desc(tide_station), tide_strata) %>%
+  group_by(flt_date, tide_station) %>%
+  mutate(n_seq = row_number()) %>%
+  ungroup() %>%
+  filter(n_seq == 1) %>%
+  select(-n_seq)
 
 # Check for duplicates
 any(duplicated(tides$flt_date))
 
-# Combine tide times with flight obs....note types
-flt_st = flt_st %>%
-  left_join(tides, by = "flt_date")
-
-# Combine tide times with flight obs....note types
-flt_st = flt_st %>%
-  mutate(flt_date = as.character(flt_date)) %>%
-  left_join(tides, by = "flt_date")
-
-# Add tide correction
-qry = glue("select distinct bb.beach_number as bidn_st, b.low_tide_correction_minutes as lt_corr ",
-           "from beach_boundary_history as bb inner join beach as b on bb.beach_id = b.beach_id ",
+# Get the tide correction data
+qry = glue("select distinct bb.beach_number as bidn, b.local_beach_name as beach_name, ",
+           "pl.location_name as tide_station, b.low_tide_correction_minutes as lt_corr ",
+           "from beach as b ",
+           "inner join beach_boundary_history as bb ",
+           "on b.beach_id = bb.beach_id ",
+           "left join point_location as pl ",
+           "on b.tide_station_location_id = pl.point_location_id ",
            "order by bb.beach_number")
 
-# Read
+# Run the query
 db_con = pg_con_local(dbname = "shellfish")
 tide_corr = dbGetQuery(db_con, qry)
 dbDisconnect(db_con)
 
-# Check obs_time
-any(is.na(flt_st$obs_time))
-# unique(flt_st$obs_time)
+# Check for duplicated BIDNs
+chk_dup_beach = tide_corr %>%
+  filter(duplicated(bidn)) %>%
+  left_join(tide_corr, by = "bidn")
 
-# Join to flt_st
-flt_st_chk = flt_st %>%
-  left_join(tide_corr, by = "bidn_st") %>%
-  mutate(tide_min = hm_to_min(tide_time) + lt_corr) %>%
+# Report if any duplicated beach_ids or BIDNs
+if (nrow(chk_dup_beach) > 0) {
+  cat("\nWARNING: Duplicated BIDNs. Do not pass go!\n\n")
+} else {
+  cat("\nNo duplicated BIDNs. Ok to proceed.\n\n")
+}
+
+# Pull out count data for comparison with tides data
+count_times = flt_st %>%
+  st_drop_geometry() %>%
+  mutate(data_source = "flt_counts") %>%
+  select(flt_date, bidn = bidn_st, beach_name = flt_beach_name, obs_time, uclam,
+         user, comments, data_source) %>%
+  filter(!is.na(obs_time) & !obs_time == "00:00")
+
+# Join obs_times and corrections
+tide_times = count_times %>%
+  select(-beach_name) %>%
+  mutate(bidn = as.integer(bidn)) %>%
+  left_join(tide_corr, by = "bidn")
+
+# Join obs_times and tide_times
+tide_times = tide_times %>%
+  mutate(flt_date = as.character(flt_date)) %>%
+  left_join(tides, by = c("flt_date", "tide_station")) %>%
+  mutate(tide_min = tide_time + lt_corr) %>%
+  # CAN GENERATE WARNING HERE IF NO OBS_TIME !!!!!!!!!!!!!!!
   mutate(obs_min = hm_to_min(obs_time)) %>%
-  mutate(min_dif = abs(tide_min - obs_min)) %>%
-  arrange(min_dif)
+  mutate(minutes_off = abs(tide_min - obs_min)) %>%
+  arrange(desc(minutes_off))
 
 # Check distribution
-table(flt_st_chk$min_dif, useNA = "ifany")
+table(tide_times$minutes_off, useNA = "ifany")
 
-# RESULT: Max dif was 101 minutes,
+# RESULT: Max dif was 85 minutes,
 #         Typically times are off by an hour or more at the start
 #         then dwindle to minimal as route heads southward
 
 # Check where times differ
-chk_count_times = flt_st_chk %>%
-  filter(min_dif > 60) %>%
-  st_drop_geometry() %>%
-  select(flt_date, bidn_st, beach_name_st, ref_tide_time = tide_time,
-         tide_height_feet, tide_strata_code, lt_corr, tide_min, obs_min,
-         min_dif)
+chk_count_times = tide_times %>%
+  filter(minutes_off > 60) %>%
+  select(flt_date, bidn, beach_name, ref_tide_time = tide_time, tide_station,
+         tide_height, tide_strata, lt_corr, tide_min, obs_min, minutes_off)
 
-
-
-# STOPPED HERE....FIGURING OUT TIDE TIME OFFSETS FOR BIRCH BAY
-# VERIFY LOCAL AND PROD ARE IDENTICAL !!!!!!!!!!!!!!!!
-
-
-
+#=============================================================================
+# Prep to combine with other datasets
+#=============================================================================
 
 # Check for missing beach_id...None
 any(is.na(flt_st$beach_id_st))
@@ -563,14 +609,14 @@ unique(flt_st$user)
 
 # Check beach_names and BIDNs
 chk_beach_names = flt_st %>%
-  select(flt_bidn, bidn_st, flt_beach_name, beach_name_st)
-
-# Get rid of geometry
-chk_beach_names$geometry = NULL
-chk_beach_names = chk_beach_names %>%
-  distinct() %>%
+  st_drop_geometry() %>%
   mutate(flt_bidn = as.integer(flt_bidn)) %>%
+  select(flt_bidn, bidn_st, flt_beach_name, beach_name_st) %>%
+  distinct() %>%
   mutate(bidn_dif = if_else(!flt_bidn == bidn_st, "different", "the same"))
+
+# Message to inspect
+cat("\nMake sure to manually inspect 'chk_beach_names' to make sure names and BIDNs match!\n\n")
 
 # Format flt_obs for binding
 flt_obs = flt_st %>%
@@ -604,15 +650,19 @@ fz = st_join(fz, bchyr_st)
 # Check for missing beach_ids: Result: None
 chk_fz = fz %>%
   filter(is.na(beach_id_st)) %>%
-  select(flt_bidn, flt_beach_name)
-
-# Dump geometry for display
-chk_fz$geometry = NULL
+  select(flt_bidn, flt_beach_name) %>%
+  st_drop_geometry()
 
 # Pull out variables in common with flt_obs
 fz_obs = fz %>%
+  mutate(uclam = as.integer(uclam)) %>%
   select(flt_date, beach_id = beach_id_st, bidn = bidn_st, beach_name = beach_name_st,
          obs_time, uclam, user, comments, source)
+
+# Needed to change datatypes for flt_obs
+flt_obs = flt_obs %>%
+  mutate(flt_date = as.character(flt_date)) %>%
+  mutate(uclam = as.integer(uclam))
 
 # Combine data into one dataset
 flt = rbind(flt_obs, fz_obs)
@@ -622,7 +672,7 @@ flt = rbind(flt_obs, fz_obs)
 #=============================================================================
 
 # Get the LTC data
-ltc_obs = read_sf(glue("{flt_path}\\LTC_{current_year}.shp"))
+ltc_obs = read_sf(glue("Flight/data/{current_year}_FlightCounts/LTC_{current_year}.shp"))
 
 # Inspect
 sort(unique(ltc_obs$Uclam))
@@ -639,7 +689,7 @@ length(n_ltc_dates)
 ltc_obs = ltc_obs %>%
   mutate(uuid = remisc::get_uuid(nrow(ltc_obs))) %>%
   mutate(Time = if_else(nchar(Time) == 4, paste0("0", Time), Time)) %>%
-  select(uuid, flt_date = Date, flt_bidn = BIDN, flt_beach_name = NAME,
+  select(uuid, flt_date = Date, flt_bidn = BIDN, flt_beach_name = name,
          obs_type, obs_time = Time, uclam = Uclam, user = User_,
          comments = Comments)
 
@@ -689,20 +739,26 @@ proof_path = glue("C:\\data\\intertidal\\Apps\\gis\\{current_year}\\")
 # Check for errant obs_time values in ltc_obs
 #=============================================================================
 
-# Filter out Dash Point...no polygon for beach. Not in plans. Then add tide data.
-ltc_st = ltc_st %>%
-  filter(!flt_beach_name == "DASH POINT") %>%
-  left_join(tides, by = "flt_date")
+# # Filter out Dash Point (2019)...no polygon for beach. Not in plans.
+# ltc_st = ltc_st %>%
+#   filter(!flt_beach_name == "DASH POINT")
 
 # Join tide_correction data to ltc_st
 ltc_st_chk = ltc_st %>%
-  left_join(tide_corr, by = "bidn_st") %>%
-  mutate(tide_min = hm_to_min(tide_time) + lt_corr) %>%
+  mutate(bidn = as.integer(flt_bidn)) %>%
+  mutate(flt_date = as.character(flt_date)) %>%
+  left_join(tide_corr, by = "bidn") %>%
+  left_join(tides, by = c("flt_date", "tide_station")) %>%
+  mutate(tide_min = tide_time + lt_corr) %>%
+  # CAN GENERATE WARNING HERE IF NO OBS_TIME !!!!!!!!!!!!!!!
   mutate(obs_min = hm_to_min(obs_time)) %>%
-  mutate(min_dif = abs(tide_min - obs_min)) %>%
-  filter(min_dif > 68)
+  mutate(minutes_off = abs(tide_min - obs_min)) %>%
+  arrange(desc(minutes_off))
 
-# RESULT: None greater than 68 minutes...looks good
+# Check distribution
+table(ltc_st_chk$minutes_off, useNA = "ifany")
+
+# RESULT: None greater than 62 minutes
 
 # Double-check user
 table(ltc_st$user, useNA = "ifany")
@@ -723,6 +779,11 @@ any(is.na(ltc_obs$beach_id))
 # Check crs
 st_crs(flt)$epsg
 st_crs(ltc_st)$epsg
+
+# Update datatypes as needed before binding
+ltc_obs = ltc_obs %>%
+  mutate(flt_date = as.character(flt_date)) %>%
+  mutate(uclam = as.integer(uclam))
 
 # Combine flt and ltc data
 flt = rbind(flt, ltc_obs)
@@ -752,7 +813,7 @@ sort(unique(substr(flt$obs_time, 4, 5)))  # Minute
 #======================================================================
 
 # Locate cases where bidn > 0 and beach_id is missing
-# None in 2018
+# None in 2020
 chk_bidn = flt %>%
   filter(is.na(beach_id))
 
@@ -903,6 +964,62 @@ any(duplicated(survey_flt$survey_id))
 # Combine flt and ltc into one dataset for later tables
 fltall = rbind(flt_tab, ltc_tab)
 
+# Check on zero counts and duplicates over both flt and ltc data ================================
+
+# Get data
+chk_zero = fltall %>%
+  select(survey_id, flt_date, obs_time, bidn, uclam, user)
+
+# Convert to lat-lon
+chk_zero = st_transform(chk_zero, 4326)
+
+chk_zero = chk_zero %>%
+  mutate(lon = as.numeric(st_coordinates(geometry)[,1])) %>%
+  mutate(lat = as.numeric(st_coordinates(geometry)[,2])) %>%
+  mutate(coords = paste0(lat, ":", lon)) %>%
+  select(survey_id, flt_date, obs_time, bidn, uclam,
+         user, coords)
+chk_zero$geometry = NULL
+
+# Make sure there is no more than one case per beach and day of a zero count
+chk_zero = chk_zero %>%
+  filter(uclam == 0L) %>%
+  group_by(survey_id, flt_date, bidn) %>%
+  mutate(n_zero = row_number(uclam)) %>%
+  ungroup()
+
+# Get only cases where n_zero > 1: None in 2019
+chk_nzero = chk_zero %>%
+  filter(n_zero > 1)
+
+# Any LTC counts with more than one zero? YES for 2020.....FIX below.
+table(chk_nzero$user, useNA = "ifany")
+
+# Any cases where uclam is zero and multiple zeros entered where bidn > 0. None
+table(chk_nzero$bidn, useNA = "ifany")
+
+# Any duplicated coords by survey_id: Result....None. So they were entered separately.
+chk_coords = chk_zero %>%
+  group_by(survey_id, bidn, coords) %>%
+  mutate(n_dups = row_number(uclam)) %>%
+  ungroup() %>%
+  filter(n_dups > 1L)
+
+# Make sure there is no more than one case per beach and day of a zero count
+# There were four in 2020....Let flight bio determine what happened. Could be
+# wrong date, or some other data entry error.
+chk_zero = chk_zero %>%
+  filter(n_zero > 1)
+
+# Message
+if ( nrow(chk_zero) > 0L ) {
+  cat("\nWARNING: Some zero counts entered more than once. Do not pass go!\n\n")
+} else {
+  cat("\nAll zero counts entered only once. Ok to proceed!\n\n")
+}
+
+# Load survey data ===========================================
+
 # Add beach_id to survey_flt so datasets can be combined
 survey_flt = survey_flt %>%
   mutate(beach_id = NA_character_) %>%
@@ -934,20 +1051,15 @@ survey = survey %>%
          survey_datetime, start_datetime, end_datetime, comment_text,
          created_datetime, created_by, modified_datetime, modified_by)
 
-# Write to shellfish
-db_con = pg_con_local(dbname = "shellfish")
-DBI::dbWriteTable(db_con, "survey", survey, row.names = FALSE, append = TRUE)
-DBI::dbDisconnect(db_con)
-
-# Write to shellfish_archive
-db_con = pg_con_local(dbname = "shellfish_archive")
-DBI::dbWriteTable(db_con, "survey", survey, row.names = FALSE, append = TRUE)
-DBI::dbDisconnect(db_con)
-
-# Write to shellfish on prod
-db_con = pg_con_prod(dbname = "shellfish")
-DBI::dbWriteTable(db_con, "survey", survey, row.names = FALSE, append = TRUE)
-DBI::dbDisconnect(db_con)
+# # Write to shellfish
+# db_con = pg_con_local(dbname = "shellfish")
+# DBI::dbWriteTable(db_con, "survey", survey, row.names = FALSE, append = TRUE)
+# DBI::dbDisconnect(db_con)
+#
+# # Write to shellfish on prod
+# db_con = pg_con_prod(dbname = "shellfish")
+# DBI::dbWriteTable(db_con, "survey", survey, row.names = FALSE, append = TRUE)
+# DBI::dbDisconnect(db_con)
 
 # Clean-up
 rm(list = c("chk_bidn", "chk_fz", "flt", "flt_count", "flt_obs", "flt_tab",
@@ -955,81 +1067,11 @@ rm(list = c("chk_bidn", "chk_fz", "flt", "flt_count", "flt_obs", "flt_tab",
             "surv_ltc", "survey", "survey_flt", "survey_ltc", "ltc_zero",
             "ltc_count"))
 
-# Check on zero counts and duplicates over both flt and ltc data ================================
-
-# Get data
-chk_zero = fltall %>%
-  select(survey_id, flt_date, obs_time, bidn, uclam, user)
-
-# Convert to lat-lon
-chk_zero = st_transform(chk_zero, 4326)
-
-chk_zero = chk_zero %>%
-  mutate(lon = as.numeric(st_coordinates(geometry)[,1])) %>%
-  mutate(lat = as.numeric(st_coordinates(geometry)[,2])) %>%
-  mutate(coords = paste0(lat, ":", lon)) %>%
-  select(survey_id, flt_date, obs_time, bidn, uclam,
-         user, coords)
-chk_zero$geometry = NULL
-
-# Make sure there is no more than one case per beach and day of a zero count
-chk_zero = chk_zero %>%
-  filter(uclam == 0L) %>%
-  group_by(survey_id, flt_date, bidn) %>%
-  mutate(n_zero = row_number(uclam)) %>%
-  ungroup()
-
-# Get only cases where n_zero > 1: None in 2019
-chk_nzero = chk_zero %>%
-  filter(n_zero > 1)
-
-# Any LTC counts with more than one zero? None
-table(chk_nzero$user, useNA = "ifany")
-
-# Any cases where uclam is zero and multiple zeros entered where bidn > 0. None
-table(chk_nzero$bidn, useNA = "ifany")
-
-# Any duplicated coords by survey_id: Result....None.
-chk_coords = chk_zero %>%
-  group_by(survey_id, bidn, coords) %>%
-  mutate(n_dups = row_number(uclam)) %>%
-  ungroup() %>%
-  filter(n_dups > 1L)
-
-# Make sure there is no more than one case per beach and day of a zero count
-# There were None in 2019
-chk_zero = chk_zero %>%
-  filter(n_zero > 1)
-
-# # Identify survey_ids with more than one zero
-# z_id = chk_zero$survey_id
-# b_id = chk_zero$bidn
-#
-# # Get rid of extra zeros from fltall data
-# fltall_zero = fltall %>%
-#   filter(survey_id %in% z_id & bidn %in% b_id & Uclam == 0L)
-
-# # RESULT 1: Need to get rid of surveys I just uploaded. Spatial join above created extra rows
-# s_ids = unique(fltall$survey_id)
-# s_ids = paste("'", s_ids, "'", sep = "")
-# s_ids = paste(s_ids, collapse = ", ")
-#
-# # Dump survey data
-# db_con = db_connect(current_db = "shellfish")
-# dbExecute(db_con,
-#           glue::glue("DELETE FROM survey ",
-#                      "WHERE survey_id IN ({s_ids})"))
-# dbDisconnect(db_con)
-
-# RESULT Final: Only one zero count per beach and day. No default zeros left
-#               in 2008 dataset.
-
-
 # survey_event table =================================================================
 
 # Generate the survey_event_id
 flt = fltall %>%
-  mutate(survey_event_id = remisc::get_uuid(nrow(fltall))) %>%
+  mutate(survey_event_id = get_uuid(nrow(fltall))) %>%
   arrange(bidn, flt_date, obs_time)
 
 # Check for duplicate survey_event_ids. There should no duplicates.
@@ -1106,11 +1148,6 @@ st_write(obj = pt_loc_tab, dsn = db_con, layer = "point_location_temp", overwrit
 DBI::dbDisconnect(db_con)
 
 # Write beach_history_temp to shellfish
-db_con = pg_con_local(dbname = "shellfish_archive")
-st_write(obj = pt_loc_tab, dsn = db_con, layer = "point_location_temp", overwrite = TRUE)
-DBI::dbDisconnect(db_con)
-
-# Write beach_history_temp to shellfish
 db_con = pg_con_prod(dbname = "shellfish")
 st_write(obj = pt_loc_tab, dsn = db_con, layer = "point_location_temp", overwrite = TRUE)
 DBI::dbDisconnect(db_con)
@@ -1124,35 +1161,25 @@ qry = glue::glue("INSERT INTO point_location ",
                  "CAST(modified_datetime AS timestamptz), modified_by ",
                  "FROM point_location_temp")
 
-# Insert select to shellfish
-db_con = dbConnect(odbc::odbc(), dsn = "local_shellfish", timezone = "UTC")
-DBI::dbExecute(db_con, qry)
-DBI::dbDisconnect(db_con)
-
-# Insert select to shellfish_archive
-db_con = dbConnect(odbc::odbc(), dsn = "local_shellfish_archive", timezone = "UTC")
-DBI::dbExecute(db_con, qry)
-DBI::dbDisconnect(db_con)
-
-# Insert select to shellfish
-db_con = dbConnect(odbc::odbc(), dsn = "prod_shellfish", timezone = "UTC")
-DBI::dbExecute(db_con, qry)
-DBI::dbDisconnect(db_con)
-
-# Drop temp
-db_con = dbConnect(odbc::odbc(), dsn = "local_shellfish", timezone = "UTC")
-DBI::dbExecute(db_con, "DROP TABLE point_location_temp")
-DBI::dbDisconnect(db_con)
-
-# Drop temp
-db_con = dbConnect(odbc::odbc(), dsn = "local_shellfish_archive", timezone = "UTC")
-DBI::dbExecute(db_con, "DROP TABLE point_location_temp")
-DBI::dbDisconnect(db_con)
-
-# Drop temp
-db_con = dbConnect(odbc::odbc(), dsn = "prod_shellfish", timezone = "UTC")
-DBI::dbExecute(db_con, "DROP TABLE point_location_temp")
-DBI::dbDisconnect(db_con)
+# # Insert select to shellfish
+# db_con = pg_con_local(dbname = "shellfish")
+# DBI::dbExecute(db_con, qry)
+# DBI::dbDisconnect(db_con)
+#
+# # Insert select to shellfish
+# db_con = pg_con_prod(dbname = "shellfish")
+# DBI::dbExecute(db_con, qry)
+# DBI::dbDisconnect(db_con)
+#
+# # Drop temp
+# db_con = pg_con_local(dbname = "shellfish")
+# DBI::dbExecute(db_con, "DROP TABLE point_location_temp")
+# DBI::dbDisconnect(db_con)
+#
+# # Drop temp
+# db_con = pg_con_prod(dbname = "shellfish")
+# DBI::dbExecute(db_con, "DROP TABLE point_location_temp")
+# DBI::dbDisconnect(db_con)
 
 #========== Back to survey_event table ======================
 
@@ -1182,7 +1209,7 @@ if (any(duplicated(survey_event$survey_event_id))) {
 
 # Check unique event_time
 unique(survey_event$event_time)
-any(!nchar(survey_event$event_time) == 5)
+any(!nchar(survey_event$event_time) == 5)              # FIGURE OUT WHAT TO DO HERE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 # Generate event_datetime
 survey_event = survey_event %>%
@@ -1216,20 +1243,20 @@ survey_event = survey_event %>%
          harvester_zip_code, comment_text, created_datetime, created_by,
          modified_datetime, modified_by)
 
-# Write to shellfish
-db_con = dbConnect(odbc::odbc(), dsn = "local_shellfish", timezone = "UTC")
-DBI::dbWriteTable(db_con, "survey_event", survey_event, row.names = FALSE, append = TRUE)
-DBI::dbDisconnect(db_con)
-
-# Write to shellfish_archive
-db_con = dbConnect(odbc::odbc(), dsn = "local_shellfish_archive", timezone = "UTC")
-DBI::dbWriteTable(db_con, "survey_event", survey_event, row.names = FALSE, append = TRUE)
-DBI::dbDisconnect(db_con)
-
-# Write to shellfish on prod
-db_con = dbConnect(odbc::odbc(), dsn = "prod_shellfish", timezone = "UTC")
-DBI::dbWriteTable(db_con, "survey_event", survey_event, row.names = FALSE, append = TRUE)
-DBI::dbDisconnect(db_con)
+# # Write to shellfish
+# db_con = dbConnect(odbc::odbc(), dsn = "local_shellfish", timezone = "UTC")
+# DBI::dbWriteTable(db_con, "survey_event", survey_event, row.names = FALSE, append = TRUE)
+# DBI::dbDisconnect(db_con)
+#
+# # Write to shellfish_archive
+# db_con = dbConnect(odbc::odbc(), dsn = "local_shellfish_archive", timezone = "UTC")
+# DBI::dbWriteTable(db_con, "survey_event", survey_event, row.names = FALSE, append = TRUE)
+# DBI::dbDisconnect(db_con)
+#
+# # Write to shellfish on prod
+# db_con = dbConnect(odbc::odbc(), dsn = "prod_shellfish", timezone = "UTC")
+# DBI::dbWriteTable(db_con, "survey_event", survey_event, row.names = FALSE, append = TRUE)
+# DBI::dbDisconnect(db_con)
 
 #============================================================================================
 # Final check to verify the same number of rows exist in both local and production DBs
