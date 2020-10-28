@@ -151,7 +151,6 @@ if ( nrow(diff_counts) > 0 ) {
   cat("\nRow counts are the same. Ok to proceed.\n\n")
 }
 
-
 #==============================================================================
 # Import beach data from shellfish DB
 #==============================================================================
@@ -283,9 +282,9 @@ chk_flt_dates = flt_obs %>%
   group_by(flt_date) %>%
   tally()
 
-# Get geometry data for spatial join....TESTING WITH 2019 data
+# Get geometry data for spatial join
 bchyr_st = beach_st %>%
-  filter(start_yr <= current_year & end_yr >= current_year - 1) %>%
+  filter(start_yr <= current_year & end_yr >= current_year) %>%
   select(beach_id_st = beach_id, bidn_st = bidn, beach_name_st = beach_name,
          start_yr, end_yr, geometry)
 
@@ -366,6 +365,7 @@ no_bidn_flt_obs = flt_st %>%
 #==========================================================================================
 
 # # In 2019 was being imported as 4269, but was actually 2927
+# # In 2020 was imported as 4326
 flt_zero = read_sf(glue("Flight/data/{current_year}_FlightCounts/UClam_Zero_{current_year}.shp"))
 
 # Verify crs
@@ -469,14 +469,14 @@ no_bidn_zero_obs = flt_zero %>%
 # # Output for FlightProof program
 # #======================================================================================
 
-# Output zero data to proofing folder
-zero_proof = flt_zero %>%
-  select(BIDN = bidn_st, name = beach_name_st, date = flt_date, time = obs_time,
-         uclam, user_ = user) %>%
-  st_transform(., 4326)
-st_crs(bidn_proof)$epsg
-proof_path = glue("C:\\data\\intertidal\\Apps\\gis\\{current_year}\\")
-#write_sf(zero_proof, dsn = glue("{proof_path}\\ZERO_{current_year}.shp"), delete_layer = TRUE)
+# # Output zero data to proofing folder
+# zero_proof = flt_zero %>%
+#   select(BIDN = bidn_st, name = beach_name_st, date = flt_date, time = obs_time,
+#          uclam, user_ = user) %>%
+#   st_transform(., 4326)
+# st_crs(bidn_proof)$epsg
+# proof_path = glue("C:\\data\\intertidal\\Apps\\gis\\{current_year}\\")
+# write_sf(zero_proof, dsn = glue("{proof_path}\\ZERO_{current_year}.shp"), delete_layer = TRUE)
 
 #=============================================================================
 # Check for errant obs_time values in flt_obs
@@ -697,6 +697,10 @@ ltc_obs = ltc_obs %>%
          obs_type, obs_time = Time, uclam = Uclam, user = User_,
          comments = Comments)
 
+# Check again
+unique(ltc_obs$obs_time)
+all(nchar(ltc_obs$obs_time) == 5L)
+
 # Verify crs
 st_crs(ltc_obs)$epsg
 
@@ -730,14 +734,14 @@ no_bidn_ltc_obs = ltc_st %>%
   arrange(flt_date, obs_time) %>%
   select(uuid, flt_date, obs_type, obs_time, uclam, user, flt_bidn, flt_beach_name, comments)
 
-# Output ltc data to proofing folder
-ltc_proof = ltc_st %>%
-  select(BIDN = bidn_st, name = beach_name_st, date = flt_date, time = obs_time,
-         uclam, user_ = user, obs_type, comments) %>%
-  st_transform(., 4326)
-st_crs(ltc_proof)$epsg
-proof_path = glue("C:\\data\\intertidal\\Apps\\gis\\{current_year}\\")
-#write_sf(ltc_proof, dsn = glue("{proof_path}\\LTC_{current_year}.shp"), delete_layer = TRUE)
+# # Output ltc data to proofing folder
+# ltc_proof = ltc_st %>%
+#   select(BIDN = bidn_st, name = beach_name_st, date = flt_date, time = obs_time,
+#          uclam, user_ = user, obs_type, comments) %>%
+#   st_transform(., 4326)
+# st_crs(ltc_proof)$epsg
+# proof_path = glue("C:\\data\\intertidal\\Apps\\gis\\{current_year}\\")
+# write_sf(ltc_proof, dsn = glue("{proof_path}\\LTC_{current_year}.shp"), delete_layer = TRUE)
 
 #=============================================================================
 # Check for errant obs_time values in ltc_obs
@@ -776,9 +780,9 @@ ltc_obs = ltc_st %>%
 # Check for missing beach_ids
 any(is.na(ltc_obs$beach_id))
 
-#======================================================================
-# Process annual flight data for upload...See line 1187 in load_2011.R
-#======================================================================
+#============================================================================================
+# Process annual flight data for upload. ONLY UPLOAD AFTER DATA RUN THROUGH FlightProof !
+#============================================================================================
 
 # Check crs
 st_crs(flt)$epsg
@@ -1146,15 +1150,15 @@ pt_loc_tab = pt_loc %>%
          comment_text, gid, geometry, created_datetime,
          created_by, modified_datetime, modified_by)
 
-# Write beach_history_temp to shellfish
-db_con = pg_con_local(dbname = "shellfish")
-st_write(obj = pt_loc_tab, dsn = db_con, layer = "point_location_temp", overwrite = TRUE)
-DBI::dbDisconnect(db_con)
-
-# Write beach_history_temp to shellfish
-db_con = pg_con_prod(dbname = "shellfish")
-st_write(obj = pt_loc_tab, dsn = db_con, layer = "point_location_temp", overwrite = TRUE)
-DBI::dbDisconnect(db_con)
+# # Write beach_history_temp to shellfish
+# db_con = pg_con_local(dbname = "shellfish")
+# st_write(obj = pt_loc_tab, dsn = db_con, layer = "point_location_temp")
+# DBI::dbDisconnect(db_con)
+#
+# # Write beach_history_temp to shellfish
+# db_con = pg_con_prod(dbname = "shellfish")
+# st_write(obj = pt_loc_tab, dsn = db_con, layer = "point_location_temp")
+# DBI::dbDisconnect(db_con)
 
 # Use select into query to get data into point_location
 qry = glue::glue("INSERT INTO point_location ",
@@ -1213,7 +1217,16 @@ if (any(duplicated(survey_event$survey_event_id))) {
 
 # Check unique event_time
 unique(survey_event$event_time)
-any(!nchar(survey_event$event_time) == 5)              # FIGURE OUT WHAT TO DO HERE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+any(!nchar(survey_event$event_time) == 5)
+
+# Convert any time values where nchar == 5 to add leading zero
+survey_event = survey_event %>%
+  mutate(event_time = if_else(nchar(event_time) == 4,
+                              paste0("0", event_time), event_time))
+
+# Check agian
+unique(survey_event$event_time)
+any(!nchar(survey_event$event_time) == 5)
 
 # Generate event_datetime
 survey_event = survey_event %>%
