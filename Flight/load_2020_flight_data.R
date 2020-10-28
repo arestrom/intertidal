@@ -2,7 +2,8 @@
 # Load 2020 flight data to shellfish database
 #
 # NOTES:
-#  1.
+#  1. Load BIDN data first. Then create files for FlightProof program.
+#  2. Need to enforce consistent naming and EPSG codes for GIS data.
 #
 #  ToDo:
 # 1. Look at line 1212. Need to determine how to handle !!!!!
@@ -206,19 +207,19 @@ mng_reg_st = st_read(db_con, query = qry)
 dbDisconnect(db_con)
 
 #======================================================================================
-# Output for FlightProof program. Already created for 2020
+# Output for FlightProof program
 #======================================================================================
 
-# Output BIDN file to proofing folder...create folder first
-bidn_proof = beach_st %>%
-  mutate(active_year = year(active_datetime)) %>%
-  mutate(inactive_year = year(inactive_datetime)) %>%
-  filter(active_year == current_year & inactive_year == current_year) %>%
-  select(BIDN = bidn, name = beach_name) %>%
-  st_transform(., 4326)
-st_crs(bidn_proof)$epsg
-proof_path = glue("C:\\data\\intertidal\\Apps\\gis\\{current_year}\\")
-#write_sf(bidn_proof, dsn = glue("{proof_path}\\BIDN_{current_year}.shp"), delete_layer = TRUE)
+# # Output BIDN file to proofing folder...create folder first
+# bidn_proof = beach_st %>%
+#   mutate(active_year = year(active_datetime)) %>%
+#   mutate(inactive_year = year(inactive_datetime)) %>%
+#   filter(active_year == current_year & inactive_year == current_year) %>%
+#   select(BIDN = bidn, name = beach_name) %>%
+#   st_transform(., 4326)
+# st_crs(bidn_proof)$epsg
+# proof_path = glue("C:\\data\\intertidal\\Apps\\gis\\{current_year}\\")
+# write_sf(bidn_proof, dsn = glue("{proof_path}\\BIDN_{current_year}.shp"), delete_layer = TRUE)
 
 #======================================================================================
 # Flight data
@@ -231,16 +232,19 @@ proof_path = glue("C:\\data\\intertidal\\Apps\\gis\\{current_year}\\")
 # Get flight data
 flt_obs = read_sf(glue("Flight/data/{current_year}_FlightCounts/UClam_{current_year}.shp"))
 
+# Check CRS: 4152 in 2020
+st_crs(flt_obs)$epsg
+
 # Inspect
 sort(unique(flt_obs$UClam))
 unique(flt_obs$User_)
-any(is.na(flt_obs$Time))
+#any(is.na(flt_obs$Time))
 any(is.na(flt_obs$TIME))
 # unique(flt_obs$TIME)        # MUST BE "00:00" format !!!!! Otherwise get error below
 # unique(flt_obs$Time)        # MUST BE "00:00" format !!!!! Otherwise get error below
 # unique(flt_obs$Comments)
 unique(flt_obs$DATE)
-unique(flt_obs$Date)
+#unique(flt_obs$Date)
 n_flt_dates = unique(flt_obs$DATE)
 length(n_flt_dates)
 
@@ -343,10 +347,10 @@ no_bidn_flt_obs = flt_st %>%
   arrange(flt_date, obs_time) %>%
   select(uuid, flt_date, obs_time, uclam, user, flt_bidn, flt_beach_name, comments)
 
-# #======================================================================================
-# # Output for FlightProof program
-# #======================================================================================
-#
+#======================================================================================
+# Output for FlightProof program
+#======================================================================================
+
 # # Output flight data to proofing folder
 # flt_proof = flt_st %>%
 #   select(BIDN = bidn_st, name = beach_name_st, date = flt_date, time = obs_time,
@@ -354,7 +358,7 @@ no_bidn_flt_obs = flt_st %>%
 #   st_transform(., 4326)
 # st_crs(flt_proof)$epsg
 # proof_path = glue("C:\\data\\intertidal\\Apps\\gis\\{current_year}\\")
-# #write_sf(flt_proof, dsn = glue("{proof_path}\\UCLAM_{current_year}.shp"), delete_layer = TRUE)
+# write_sf(flt_proof, dsn = glue("{proof_path}\\UCLAM_{current_year}.shp"), delete_layer = TRUE)
 
 #==========================================================================================
 # Get the zero count data. File holds counts == 0

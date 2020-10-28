@@ -299,8 +299,10 @@ if (nrow(chk_geometry) > 0) {
 }
 
 # Identify where geometry is invalid
-st_is_valid(chk_geometry$geometry, reason = TRUE)[[1]]
-chk_geometry$beach_name[[1]]
+if (nrow(chk_geometry) > 0L ) {
+  st_is_valid(chk_geometry$geometry, reason = TRUE)[[1]]
+  chk_geometry$beach_name[[1]]
+}
 
 #==================================================================================
 # Prepare current_year beach polygons so they can be written to the DB
@@ -348,12 +350,12 @@ st_crs(new_flt_beach)$epsg
 
 # Write beach_history_temp to local shellfish
 db_con = pg_con_local(dbname = "shellfish")
-st_write(obj = new_flt_beach, dsn = db_con, layer = "beach_history_temp", overwrite = TRUE)
+st_write(obj = new_flt_beach, dsn = db_con, layer = "beach_history_temp")
 DBI::dbDisconnect(db_con)
 
 # Write beach_history_temp to prod shellfish
 db_con = pg_con_prod(dbname = "shellfish")
-st_write(obj = new_flt_beach, dsn = db_con, layer = "beach_history_temp", overwrite = TRUE)
+st_write(obj = new_flt_beach, dsn = db_con, layer = "beach_history_temp")
 DBI::dbDisconnect(db_con)
 
 # Use select into query to get data into point_location
