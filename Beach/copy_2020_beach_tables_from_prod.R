@@ -1,5 +1,6 @@
 #=================================================================
-# Kat loaded beach_boundarys to prod. Need to copy to my local
+# Kat loaded beach_boundarys to prod. Need to copy to my local.
+# Need to make sure that uuid keys match
 #
 # NOTES:
 #  1.
