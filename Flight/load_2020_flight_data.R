@@ -6,7 +6,7 @@
 #  2. Need to enforce consistent naming and EPSG codes for GIS data.
 #
 #  ToDo:
-# 1. Look at line 1212. Need to determine how to handle !!!!!
+# 1.
 #
 # AS 2020-10-29
 #=================================================================

@@ -4,14 +4,14 @@
 # NOTES:
 #  1. Data should be pre-proofed by person responsible for all
 #     flight and low-tide counts. The data can be proofed using
-#     The FlightProof program, which currently it relies on import of
-#     shapefiles. I have encouraged using a single file geodatabase
+#     The FlightProof program, which currently relies on import of
+#     shapefiles. A better approach is to use a single file geodatabase
 #     instead. Once that transition has been made the FlightProof
 #     program can be amended accordingly. Should be an easy edit.
 #
-# All loaded on 2020-10-
+# All loaded to local on 2020-10-28
 #
-# AS 2020-10-23
+# AS 2020-10-29
 #=================================================================
 
 # Clear workspace
