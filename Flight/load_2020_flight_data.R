@@ -1261,17 +1261,12 @@ survey_event = survey_event %>%
          modified_datetime, modified_by)
 
 # # Write to shellfish
-# db_con = dbConnect(odbc::odbc(), dsn = "local_shellfish", timezone = "UTC")
-# DBI::dbWriteTable(db_con, "survey_event", survey_event, row.names = FALSE, append = TRUE)
-# DBI::dbDisconnect(db_con)
-#
-# # Write to shellfish_archive
-# db_con = dbConnect(odbc::odbc(), dsn = "local_shellfish_archive", timezone = "UTC")
+# db_con = pg_con_local(dbname = "shellfish")
 # DBI::dbWriteTable(db_con, "survey_event", survey_event, row.names = FALSE, append = TRUE)
 # DBI::dbDisconnect(db_con)
 #
 # # Write to shellfish on prod
-# db_con = dbConnect(odbc::odbc(), dsn = "prod_shellfish", timezone = "UTC")
+# db_con = pg_con_prod(dbname = "shellfish")
 # DBI::dbWriteTable(db_con, "survey_event", survey_event, row.names = FALSE, append = TRUE)
 # DBI::dbDisconnect(db_con)
 
