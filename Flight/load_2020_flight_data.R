@@ -1051,7 +1051,7 @@ survey = survey %>%
   mutate(end_datetime = with_tz(as.POSIXct(NA), "UTC")) %>%
   mutate(comment_text = NA_character_) %>%
   mutate(created_datetime = with_tz(Sys.time(), "UTC")) %>%
-  mutate(created_by = "stromas") %>%
+  mutate(created_by = Sys.getenv("USERNAME")) %>%
   mutate(modified_datetime = with_tz(as.POSIXct(NA), "UTC")) %>%
   mutate(modified_by = NA_character_) %>%
   select(survey_id, survey_type_id, sampling_program_id, beach_id, point_location_id,
@@ -1141,7 +1141,7 @@ pt_loc_tab = pt_loc %>%
   mutate(comment_text = NA_character_) %>%
   mutate(gid = seq(new_gid, new_gid + nrow(pt_loc) - 1L)) %>%
   mutate(created_datetime = with_tz(Sys.time(), "UTC")) %>%
-  mutate(created_by = "stromas") %>%
+  mutate(created_by = Sys.getenv("USERNAME")) %>%
   mutate(modified_datetime = with_tz(as.POSIXct(NA), "UTC")) %>%
   mutate(modified_by = NA_character_) %>%
   select(point_location_id, location_type_id, beach_id,
@@ -1251,7 +1251,7 @@ survey_event = survey_event %>%
   mutate(harvester_zip_code = NA_integer_) %>%
   mutate(comment_text = trimws(comments)) %>%
   mutate(created_datetime = with_tz(Sys.time(), "UTC")) %>%
-  mutate(created_by = "stromas") %>%
+  mutate(created_by = Sys.getenv("USERNAME")) %>%
   mutate(modified_datetime = with_tz(as.POSIXct(NA), "UTC")) %>%
   mutate(modified_by = NA_character_) %>%
   select(survey_event_id, survey_id, event_location_id, harvester_type_id,
