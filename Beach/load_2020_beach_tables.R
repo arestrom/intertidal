@@ -331,7 +331,7 @@ new_flt_beach = flt_beach %>%
   mutate(inactive_datetime = with_tz(as.POSIXct(glue("{current_year}-12-31"), tz = "America/Los_Angeles"), "UTC")) %>%
   mutate(inactive_reason = NA_character_) %>%
   mutate(created_datetime = with_tz(Sys.time(), "UTC")) %>%
-  mutate(created_by = "stromas") %>%
+  mutate(created_by = Sys.getenv("USERNAME")) %>%
   mutate(modified_datetime = with_tz(as.POSIXct(NA), "UTC")) %>%
   mutate(modified_by = NA_character_) %>%
   select(beach_boundary_history_id, beach_id, survey_type_id, beach_number = bidn,
@@ -348,15 +348,15 @@ st_crs(new_flt_beach)$epsg
 #   mutate(beach_name = if_else(beach_name == "Sse Dabob Bay", "SSE Dabob Bay", beach_name)) %>%
 #   mutate(beach_name = if_else(beach_name == "Sne Dabob Bay", "SNE Dabob Bay", beach_name))
 
-# Write beach_history_temp to local shellfish
-db_con = pg_con_local(dbname = "shellfish")
-st_write(obj = new_flt_beach, dsn = db_con, layer = "beach_history_temp")
-DBI::dbDisconnect(db_con)
-
-# Write beach_history_temp to prod shellfish
-db_con = pg_con_prod(dbname = "shellfish")
-st_write(obj = new_flt_beach, dsn = db_con, layer = "beach_history_temp")
-DBI::dbDisconnect(db_con)
+# # Write beach_history_temp to local shellfish
+# db_con = pg_con_local(dbname = "shellfish")
+# st_write(obj = new_flt_beach, dsn = db_con, layer = "beach_history_temp")
+# DBI::dbDisconnect(db_con)
+#
+# # Write beach_history_temp to prod shellfish
+# db_con = pg_con_prod(dbname = "shellfish")
+# st_write(obj = new_flt_beach, dsn = db_con, layer = "beach_history_temp")
+# DBI::dbDisconnect(db_con)
 
 # Use select into query to get data into point_location
 qry = glue::glue("INSERT INTO beach_boundary_history ",
@@ -368,15 +368,15 @@ qry = glue::glue("INSERT INTO beach_boundary_history ",
                  "CAST(modified_datetime AS timestamptz), modified_by ",
                  "FROM beach_history_temp")
 
-# Insert select to local shellfish
-db_con = pg_con_local(dbname = "shellfish")
-DBI::dbExecute(db_con, qry)
-DBI::dbDisconnect(db_con)
-
-# Insert select to prod shellfish
-db_con = pg_con_prod(dbname = "shellfish")
-DBI::dbExecute(db_con, qry)
-DBI::dbDisconnect(db_con)
+# # Insert select to local shellfish
+# db_con = pg_con_local(dbname = "shellfish")
+# DBI::dbExecute(db_con, qry)
+# DBI::dbDisconnect(db_con)
+#
+# # Insert select to prod shellfish
+# db_con = pg_con_prod(dbname = "shellfish")
+# DBI::dbExecute(db_con, qry)
+# DBI::dbDisconnect(db_con)
 
 # Drop temp
 db_con = pg_con_local(dbname = "shellfish")
