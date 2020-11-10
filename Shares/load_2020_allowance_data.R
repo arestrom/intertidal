@@ -2,25 +2,23 @@
 # Load beach allowance data for 2020
 #
 # NOTES:
-#  1. Allowance LUTs were loaded in earlier version "load_allowance_data.R"
-#  2. 2019 allowance data loaded on 2019-11-04
+#  1. Looks ready to upload.
 #
-# AS 2019-11-04
+# AS 2020-11-10
 #=================================================================
 
 # Clear workspace
 rm(list = ls(all.names = TRUE))
 
 # Libraries
-#library(remisc)
 library(dplyr)
 library(DBI)
-#library(RODBC)
 library(RPostgres)
 library(glue)
 library(sf)
 library(stringi)
 library(lubridate)
+library(openxlsx)
 
 # Set options
 options(digits=14)
@@ -154,18 +152,11 @@ beach = beach %>%
   mutate(end_yr = as.integer(substr(inactive_datetime, 1, 4)))
 
 # Get the seasons data
-allow = read.xlsx("2019_2010_ClamOysterAllowables.xlsx", sheet = "Allowables", detectDates = TRUE)
-allow = read.xlsx(glue("Shares/data/{current_year}_2010_ClamOysterAllowable.xlsx"), sheet = "Allowables", detectDates = TRUE)
+allow = read.xlsx(glue("Shares/data/{current_year}_2010_ClamOysterAllowables.xlsx"), sheet = "Allowables", detectDates = TRUE)
 
-
-# STOPPED HERE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-
-
-
-# Pull out 2019 data
+# Pull out current_year data
 allow = allow %>%
-  filter(allow_year == 2019)
+  filter(allow_year == current_year)
 
 #======================================================================================
 # Process
@@ -173,7 +164,7 @@ allow = allow %>%
 
 # Get the beach data
 bchyr = beach %>%
-  filter(start_yr == 2019L & end_yr == 2019L) %>%
+  filter(start_yr == current_year & end_yr == current_year) %>%
   select(beach_id, bidn) %>%
   distinct()
 
@@ -184,6 +175,9 @@ if (any(duplicated(bchyr$bidn))) {
 
 # Add beach_id
 allyr = allow %>%
+  # Update Purdy Spit BIDN to 280645
+  mutate(bidn = as.integer(bidn)) %>%
+  mutate(bidn = if_else(bidn == 280640L, 280645L, bidn)) %>%
   select(bidn, beach_name, allow_year, beach_status, report_type, species_group,
          clam_allow = `allow_lbs(ManNat)`, oys_allow = `allow_num(Oyster)`,
          butt_allow = `allow_lbs(butters)`, cock_allow = `allow_lbs(cock)`,
@@ -407,14 +401,14 @@ allowance_table = allowance_table %>%
   mutate(comment_text = trimws(comment_text)) %>%
   mutate(comment_text = if_else(comment_text == "", NA_character_, comment_text))
 
-# Write to shellfish
-db_con = pg_con_local(dbname = "shellfish")
-DBI::dbWriteTable(db_con, "beach_allowance", allowance_table, row.names = FALSE, append = TRUE)
-DBI::dbDisconnect(db_con)
-
-# Write to shellfish_archive
-db_con = pg_con_local(dbname = "shellfish_archive")
-DBI::dbWriteTable(db_con, "beach_allowance", allowance_table, row.names = FALSE, append = TRUE)
-DBI::dbDisconnect(db_con)
+# # Write to shellfish
+# db_con = pg_con_local(dbname = "shellfish")
+# DBI::dbWriteTable(db_con, "beach_allowance", allowance_table, row.names = FALSE, append = TRUE)
+# DBI::dbDisconnect(db_con)
+#
+# # Write to shellfish_archive
+# db_con = pg_con_prod(dbname = "shellfish")
+# DBI::dbWriteTable(db_con, "beach_allowance", allowance_table, row.names = FALSE, append = TRUE)
+# DBI::dbDisconnect(db_con)
 
 
