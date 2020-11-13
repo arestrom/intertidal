@@ -346,6 +346,29 @@ no_bidn_flt_obs = flt_st %>%
   arrange(flt_date, obs_time) %>%
   select(uuid, flt_date, obs_time, uclam, user, flt_bidn, flt_beach_name, comments)
 
+# Check for any duplicated flt_date zero:
+# Result: None found
+chk_zero_flt_date_dup = flt_st %>%
+  st_drop_geometry() %>%
+  filter(uclam == 0) %>%
+  group_by(bidn_st, flt_date) %>%
+  mutate(n_seq = row_number()) %>%
+  ungroup() %>%
+  filter(n_seq > 1) %>%
+  select(bidn_st, flt_date) %>%
+  left_join(flt_st, by = c("bidn_st", "flt_date"))
+
+# # Delete any duplicated zero LTC counts
+# flt_st = flt_st %>%
+#   group_by(bidn_st, flt_date) %>%
+#   mutate(n_seq = row_number()) %>%
+#   ungroup() %>%
+#   filter(n_seq == 1L) %>%
+#   select(-n_seq)
+
+# Verify same number of dates remain: Result 42...Good.
+length(unique(flt_st$flt_date))
+
 #======================================================================================
 # Output for FlightProof program
 #======================================================================================
@@ -464,6 +487,28 @@ no_bidn_zero_obs = flt_zero %>%
   filter(is.na(bidn_st)) %>%
   arrange(flt_date, obs_time) %>%
   select(uuid, flt_date, obs_time, uclam, user, flt_bidn, flt_beach_name, comments)
+
+# Check for any duplicated flt_date zero:
+# Result: There's 121 sets of duplicate zero entries. Need to delete duplicates
+chk_zero_date_dup = flt_zero %>%
+  st_drop_geometry() %>%
+  group_by(bidn_st, flt_date) %>%
+  mutate(n_seq = row_number()) %>%
+  ungroup() %>%
+  filter(n_seq > 1) %>%
+  select(bidn_st, flt_date) %>%
+  left_join(flt_zero, by = c("bidn_st", "flt_date"))
+
+# Delete duplicate zero entries: Got rid of 121 rows...Correct
+flt_zero = flt_zero %>%
+  group_by(bidn_st, flt_date) %>%
+  mutate(n_seq = row_number()) %>%
+  ungroup() %>%
+  filter(n_seq == 1L) %>%
+  select(-n_seq)
+
+# Verify same number of dates remain: Result 42...Good.
+length(unique(flt_zero$flt_date))
 
 # #======================================================================================
 # # Output for FlightProof program
@@ -671,6 +716,9 @@ flt_obs = flt_obs %>%
 # Combine data into one dataset
 flt = rbind(flt_obs, fz_obs)
 
+# Check user
+unique(flt$user)
+
 #=============================================================================
 # Get the ltc data
 #=============================================================================
@@ -691,7 +739,7 @@ length(n_ltc_dates)
 
 # Format
 ltc_obs = ltc_obs %>%
-  mutate(uuid = remisc::get_uuid(nrow(ltc_obs))) %>%
+  mutate(uuid = get_uuid(nrow(ltc_obs))) %>%
   mutate(Time = if_else(nchar(Time) == 4, paste0("0", Time), Time)) %>%
   select(uuid, flt_date = Date, flt_bidn = BIDN, flt_beach_name = name,
          obs_type, obs_time = Time, uclam = Uclam, user = User_,
@@ -733,6 +781,29 @@ no_bidn_ltc_obs = ltc_st %>%
   filter(is.na(bidn_st)) %>%
   arrange(flt_date, obs_time) %>%
   select(uuid, flt_date, obs_type, obs_time, uclam, user, flt_bidn, flt_beach_name, comments)
+
+# Check for any duplicated ltc_date zero:
+# Result: None found
+chk_zero_ltc_date_dup = ltc_st %>%
+  st_drop_geometry() %>%
+  filter(uclam == 0) %>%
+  group_by(bidn_st, flt_date) %>%
+  mutate(n_seq = row_number()) %>%
+  ungroup() %>%
+  filter(n_seq > 1) %>%
+  select(bidn_st, flt_date) %>%
+  left_join(ltc_st, by = c("bidn_st", "flt_date"))
+
+# # Delete any duplicated zero LTC counts
+# ltc_st = ltc_st %>%
+#   group_by(bidn_st, flt_date) %>%
+#   mutate(n_seq = row_number()) %>%
+#   ungroup() %>%
+#   filter(n_seq == 1L) %>%
+#   select(-n_seq)
+
+# Verify same number of dates remain: Result 42...Good.
+length(unique(ltc_st$flt_date))
 
 # # Output ltc data to proofing folder
 # ltc_proof = ltc_st %>%
@@ -909,14 +980,14 @@ ltc_tab = rbind(ltc_count, ltc_zero)
 # Generate the survey_id for LTCs
 ltc_tab = ltc_tab %>%
   group_by(flt_date, bidn) %>%
-  mutate(survey_id = remisc::get_uuid(1L)) %>%
+  mutate(survey_id = get_uuid(1L)) %>%
   ungroup()
 
 # Drop the geometry column for the survey table
 surv_ltc = ltc_tab %>%
   select(survey_id, survey_type_id, beach_id,
-         survey_datetime = flt_date)
-surv_ltc$geometry = NULL
+         survey_datetime = flt_date) %>%
+  st_drop_geometry()
 
 # Set to unique. Won't work with geometry column still in place.
 # Also need beach_id for LTC data...but not with flight data
@@ -933,7 +1004,7 @@ any(duplicated(survey_ltc$survey_id))
 flt_zero = flt_tab %>%
   filter(uclam == 0L)
 
-# Add a count by bidn, date, and user
+# Add a count by bidn, date, and user so only the first zero can be filtered out for use
 flt_zero = flt_zero %>%
   group_by(bidn, flt_date, user) %>%
   mutate(n_zero = row_number(uclam)) %>%
@@ -950,14 +1021,14 @@ flt_tab = rbind(flt_count, flt_zero)
 # Generate the survey_id for flights
 flt_tab = flt_tab %>%
   group_by(flt_date) %>%
-  mutate(survey_id = remisc::get_uuid(1L)) %>%
+  mutate(survey_id = get_uuid(1L)) %>%
   ungroup() %>%
   filter(!is.na(beach_id))
 
 # Drop the geometry column for the survey table
 surv_flt = flt_tab %>%
-  select(survey_id, survey_type_id, survey_datetime = flt_date)
-surv_flt$geometry = NULL
+  select(survey_id, survey_type_id, survey_datetime = flt_date) %>%
+  st_drop_geometry()
 
 # Set to unique. Won't work with geometry column still in place.
 survey_flt = surv_flt %>%
@@ -976,7 +1047,7 @@ fltall = rbind(flt_tab, ltc_tab)
 
 # Get data
 chk_zero = fltall %>%
-  select(survey_id, flt_date, obs_time, bidn, uclam, user)
+  select(survey_id, flt_date, obs_time, bidn, uclam, user, source)
 
 # Convert to lat-lon
 chk_zero = st_transform(chk_zero, 4326)
@@ -986,38 +1057,46 @@ chk_zero = chk_zero %>%
   mutate(lat = as.numeric(st_coordinates(geometry)[,2])) %>%
   mutate(coords = paste0(lat, ":", lon)) %>%
   select(survey_id, flt_date, obs_time, bidn, uclam,
-         user, coords)
-chk_zero$geometry = NULL
+         user, source, coords) %>%
+  st_drop_geometry()
 
-# Make sure there is no more than one case per beach and day of a zero count
+# Make sure there is no more than one case per beach and day of a zero count...Unless one is from flight and the other from LTC
 chk_zero = chk_zero %>%
   filter(uclam == 0L) %>%
   group_by(survey_id, flt_date, bidn) %>%
   mutate(n_zero = row_number(uclam)) %>%
-  ungroup()
-
-# Get only cases where n_zero > 1: None in 2019
-chk_nzero = chk_zero %>%
-  filter(n_zero > 1)
-
-# Any LTC counts with more than one zero? YES for 2020.....FIX below.
-table(chk_nzero$user, useNA = "ifany")
-
-# Any cases where uclam is zero and multiple zeros entered where bidn > 0. None
-table(chk_nzero$bidn, useNA = "ifany")
-
-# Any duplicated coords by survey_id: Result....None. So they were entered separately.
-chk_coords = chk_zero %>%
-  group_by(survey_id, bidn, coords) %>%
-  mutate(n_dups = row_number(uclam)) %>%
   ungroup() %>%
-  filter(n_dups > 1L)
+  filter(n_zero > 1L) %>%
+  select(survey_id, bidn, uclam, coords) %>%
+  left_join(fltall, by = c("survey_id", "bidn", "uclam"))
 
-# Make sure there is no more than one case per beach and day of a zero count
-# There were four in 2020....Let flight bio determine what happened. Could be
-# wrong date, or some other data entry error.
+# Inspection of coordinates shows that each set of data was entered separately
+# One of each pair came separately from flight and zeros files. Just get rid of
+# the zero's data since the flight data has more info, i.e. time-stamps
+# Get rows to delete to use in anti-join
 chk_zero = chk_zero %>%
-  filter(n_zero > 1)
+  arrange(flt_date, bidn, user) %>%
+  group_by(survey_id) %>%
+  mutate(n_seq = row_number()) %>%
+  ungroup() %>%
+  filter(n_seq > 1L) %>%
+  select(survey_id, flt_date, bidn, user, uclam)
+
+# Do an anti-join to get rid of extraneous zero counts
+fltall = fltall %>%
+  anti_join(chk_zero, by = c("survey_id", "flt_date", "bidn", "user", "uclam"))
+
+# Check again
+chk_zero = fltall %>%
+  st_drop_geometry() %>%
+  filter(uclam == 0L) %>%
+  group_by(survey_id, flt_date, bidn) %>%
+  mutate(n_zero = row_number(uclam)) %>%
+  ungroup() %>%
+  filter(n_zero > 1L) %>%
+  select(survey_id, bidn, uclam) %>%
+  left_join(fltall, by = c("survey_id", "bidn", "uclam"))
+
 
 # Message
 if ( nrow(chk_zero) > 0L ) {
@@ -1094,7 +1173,7 @@ if (any(duplicated(flt$survey_event_id))) {
 
 # Since every row is a unique observation, generate UUID in flt
 flt = flt %>%
-  mutate(point_location_id = remisc::get_uuid(nrow(flt)))
+  mutate(point_location_id = get_uuid(nrow(flt)))
 
 # Pull out needed columns
 pt_loc = flt %>%
@@ -1123,7 +1202,7 @@ any(duplicated(pt_loc$point_location_id))
 qry = glue("select max(gid) from point_location")
 
 # Get values from shellfish
-db_con = dbConnect(odbc::odbc(), dsn = "local_shellfish", timezone = "UTC")
+db_con = pg_con_local(dbname = "shellfish")
 max_gid = dbGetQuery(db_con, qry)
 dbDisconnect(db_con)
 
@@ -1202,8 +1281,8 @@ qry = glue::glue("INSERT INTO point_location ",
 survey_event = flt %>%
   select(survey_event_id, survey_id, event_location_id = point_location_id,
          bidn, beach_name, user, event_time = obs_time, event_date = flt_date,
-         harvester_count = uclam, comments)
-survey_event$geometry = NULL
+         harvester_count = uclam, comments) %>%
+  st_drop_geometry()
 
 # Verify no duplicated survey_event_ids
 if (any(duplicated(survey_event$survey_event_id))) {
