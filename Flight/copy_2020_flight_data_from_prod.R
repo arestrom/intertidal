@@ -138,19 +138,24 @@ if ( nrow(diff_counts) > 0 ) {
 }
 
 #==============================================================================
-# Delete previously uploaded current year beach data from local...need to reload
-# using data from prod. Prod has the data with definitive uuid keys for 2020
-# This is an alternative, and safer method to delete the old data.
+# Identify current year flight data that has been loaded to production
 #==============================================================================
 
-# # Verify we loaded 189 records and extract uuids to delete
-# qry = glue::glue("select beach_boundary_history_id, active_datetime ",
-#                  "from beach_boundary_history ",
-#                  "where date_part('year', active_datetime) = 2020")
-#
-# db_con = pg_con_local(dbname = "shellfish")
-# bb_id = DBI::dbGetQuery(db_con, qry)
-# dbDisconnect(db_con)
+
+# STOPPED HERE !!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+
+
+
+# Verify we loaded 189 records and extract uuids to delete
+qry = glue::glue("select s.survey_id, se.survey_event_id, pl. ",
+                 "from beach_boundary_history ",
+                 "where date_part('year', active_datetime) = 2020")
+
+db_con = pg_con_local(dbname = "shellfish")
+bb_id = DBI::dbGetQuery(db_con, qry)
+dbDisconnect(db_con)
 #
 # # Pull out IDs for data needing to be deleted and collapse into a string for the next query
 # bb_id = bb_id$beach_boundary_history_id
