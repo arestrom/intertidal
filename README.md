@@ -20,6 +20,8 @@ step-by-step workflow. Steps proceed as follows:
     zero-counts)
   - **Seasons** (dates of open and closed seasons for managed beaches)
   - **Shares** (harvest shares, determined by State-Tribal agreements)
+  - **Views** (Database views, to enable visualizing spatial data in
+    QGIS)
 
 Each set of scripts typically includes notes in the header to document
 any annual changes, issues, or special circumstances. Each folder also
@@ -29,7 +31,9 @@ created, most of these scripts and subfolders will no longer be needed.
 Raw data can then be entered directly using a web-interface, or via
 automated procedures from mobile devices. Scripts to generate annual
 harvest estimates and projections for the following year are stored at
-the top level.
+the top level. The *Views* folder consists of SQL scripts needed to
+create the annual database views that enable visualizing spatial data in
+QGIS.
 
 ## Permissions
 
