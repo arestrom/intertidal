@@ -304,3 +304,91 @@ if ( nrow(diff_counts) > 0 ) {
   cat("\nRow counts are the same. Ok to proceed.\n\n")
 }
 
+#==============================================================================
+# Verify time values match....issue in first run of code
+#==============================================================================
+
+# Pull out and verify IDs loaded by Kat
+qry = glue::glue("select s.survey_id, se.survey_event_id, ",
+                 "pt.point_location_id ",
+                 "from survey as s ",
+                 "left join survey_event as se on s.survey_id = se.survey_id ",
+                 "left join point_location as pt on se.event_location_id = pt.point_location_id ",
+                 "where date_part('year', survey_datetime) = 2020")
+
+db_con = pg_con_prod(dbname = "shellfish")
+prod_ids = DBI::dbGetQuery(db_con, qry)
+dbDisconnect(db_con)
+
+#================================================
+# Check survey: Result...times match
+#================================================
+
+# Get the IDs
+s_ids = unique(prod_ids$survey_id)
+length(s_ids)
+s_ids = paste0(paste0("'", s_ids, "'"), collapse = ", ")
+
+# Define query
+qry = glue("select survey_id, survey_datetime as survey_time_prod, ",
+           "start_datetime as start_time_prod, end_datetime as end_time_prod ",
+           "from survey ",
+           "where survey_id in ({s_ids})")
+
+db_con = pg_con_prod(dbname = "shellfish")
+chk_survey_prod = DBI::dbGetQuery(db_con, qry)
+dbDisconnect(db_con)
+
+# Define query
+qry = glue("select survey_id, survey_datetime as survey_time_local, ",
+           "start_datetime as start_time_local, end_datetime as end_time_local ",
+           "from survey ",
+           "where survey_id in ({s_ids})")
+
+db_con = pg_con_local(dbname = "shellfish")
+chk_survey_local = DBI::dbGetQuery(db_con, qry)
+dbDisconnect(db_con)
+
+# Join...Dates are correct
+chk_survey = chk_survey_prod %>%
+  left_join(chk_survey_local, by = "survey_id") %>%
+  filter(!survey_time_prod == survey_time_local)
+
+#================================================
+# Check survey_event: Result...times match
+#================================================
+
+# Get the IDs
+se_ids = unique(prod_ids$survey_event_id)
+length(se_ids)
+se_ids = paste0(paste0("'", se_ids, "'"), collapse = ", ")
+
+# Define query
+qry = glue("select survey_event_id, event_datetime as event_time_prod, ",
+           "created_datetime as create_time_prod ",
+           "from survey_event ",
+           "where survey_event_id in ({se_ids})")
+
+db_con = pg_con_prod(dbname = "shellfish")
+chk_survey_event_prod = DBI::dbGetQuery(db_con, qry)
+dbDisconnect(db_con)
+
+# Define query
+qry = glue("select survey_event_id, event_datetime as event_time_local, ",
+           "created_datetime as create_time_local ",
+           "from survey_event ",
+           "where survey_event_id in ({se_ids})")
+
+db_con = pg_con_local(dbname = "shellfish")
+chk_survey_event_local = DBI::dbGetQuery(db_con, qry)
+dbDisconnect(db_con)
+
+# Join...Dates are correct
+chk_survey_event = chk_survey_event_prod %>%
+  left_join(chk_survey_event_local, by = "survey_event_id") %>%
+  filter(!event_time_prod == event_time_local)
+
+
+
+
+
