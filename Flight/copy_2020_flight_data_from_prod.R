@@ -5,7 +5,7 @@
 # NOTES:
 #  1.
 #
-# All loaded to local on 2020-11-
+# All loaded to local on 2020-11-16
 #
 # AS 2020-11-16
 #=================================================================
@@ -165,91 +165,114 @@ db_con = pg_con_local(dbname = "shellfish")
 local_ids = DBI::dbGetQuery(db_con, qry)
 dbDisconnect(db_con)
 
-# Verify counts match
+# Verify counts match: Result...None of the flight data have been uploaded to local
 if ( nrow(prod_ids) == max(diff_counts$row_diff) ) {
   cat("\nCorrect number of rows pulled. Ok to proceed.\n\n")
 } else {
   cat("\nWARNING: Row counts not as expected. Do not pass go!\n\n")
 }
 
+#==============================================================================
+# Write the point_location data
+#==============================================================================
+
 # Get the missing point_location_data from prod
+pt_ids = unique(prod_ids$point_location_id)
+length(pt_ids)
+pt_ids = paste0(paste0("'", pt_ids, "'"), collapse = ", ")
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-# STOPPED HERE !!!!!!!!!!!!!!!!!!!!!!!!!!!  Need to pull out all IDs uploaded for flight and LTC data
-
-
-
-
-#
-# # Pull out IDs for data needing to be deleted and collapse into a string for the next query
-# bb_id = bb_id$beach_boundary_history_id
-# bb_id = paste0(paste0("'", bb_id, "'"), collapse = ", ")
-#
-# # Get rid of all beach_boundary_history polygons for current year that were previously loaded
-# qry = glue::glue("DELETE FROM beach_boundary_history ",
-#                  "where beach_boundary_history_id in ({bb_id})")
-#
-# db_con = pg_con_local(dbname = "shellfish")
-# DBI::dbExecute(db_con, qry)
-# dbDisconnect(db_con)
-#
-# # # None were loaded to prod
-# # db_con = pg_con_prod(dbname = "shellfish")
-# # DBI::dbExecute(db_con, qry)
-# # dbDisconnect(db_con)
-# #
-# # # Get rid of all beach table entries for current year that were previously loaded. No new ones loaded in 2020.
-# # qry = glue::glue("DELETE FROM beach ",
-# #                  "where created_datetime = '2019-10-31 22:12:29+00'")
-# #
-# # db_con = pg_con_local(dbname = "shellfish")
-# # DBI::dbExecute(db_con, qry)
-# # dbDisconnect(db_con)
-# #
-# # db_con = pg_con_prod(dbname = "shellfish")
-# # DBI::dbExecute(db_con, qry)
-# # dbDisconnect(db_con)
-
-#============================================================================================
-# Get beach_boundary history data from prod....no new beach data needed for 2020
-#============================================================================================
-
-# Verify we loaded 189 records and extract uuids to delete
-qry = glue::glue("select * ",
-                 "from beach_boundary_history ",
-                 "where date_part('year', active_datetime) = 2020")
+# Define query
+qry = glue("select * from point_location ",
+           "where point_location_id in ({pt_ids})")
 
 db_con = pg_con_prod(dbname = "shellfish")
-dat = DBI::dbGetQuery(db_con, qry)
+pt_loc = DBI::dbGetQuery(db_con, qry)
 dbDisconnect(db_con)
 
-# Check values
-tz(dat$active_datetime)
-tz(dat$inactive_datetime)
-# Convert to UTC
-dat = dat %>%
-  mutate(active_datetime = with_tz(format(active_datetime), tzone = "UTC")) %>%
-  mutate(inactive_datetime = with_tz(format(inactive_datetime), tzone = "UTC"))
-unique(dat$active_datetime)   # Should be: "2020-01-01 08:00:00 UTC"
-tz(dat$active_datetime)       # Should be: "UTC"
-tz(dat$inactive_datetime)     # Should be: "UTC"
+# Check timezone...None set
+tz(pt_loc$created_datetime)[1]
 
-# # Write
-# db_con = pg_con_local(dbname = "shellfish")
-# DBI::dbWriteTable(db_con, "beach_boundary_history", dat, row.names = FALSE, append = TRUE)
-# DBI::dbDisconnect(db_con)
+# Set and convert timezone
+pt_loc = pt_loc %>%
+  mutate(created_datetime = with_tz(as.POSIXct(pt_loc$created_datetime, tz = "America/Los_Angeles"), "UTC")) %>%
+  mutate(modified_datetime = with_tz(as.POSIXct(pt_loc$modified_datetime, tz = "America/Los_Angeles"), "UTC"))
+
+# Check timezone again
+tz(pt_loc$created_datetime)[1]
+
+# Write to local
+db_con = pg_con_local(dbname = "shellfish")
+DBI::dbWriteTable(db_con, "point_location", pt_loc, row.names = FALSE, append = TRUE)
+DBI::dbDisconnect(db_con)
+
+#==============================================================================
+# Write the survey data
+#==============================================================================
+
+# Get the missing point_location_data from prod
+s_ids = unique(prod_ids$survey_id)
+length(s_ids)
+s_ids = paste0(paste0("'", s_ids, "'"), collapse = ", ")
+
+# Define query
+qry = glue("select * from survey ",
+           "where survey_id in ({s_ids})")
+
+db_con = pg_con_prod(dbname = "shellfish")
+survey = DBI::dbGetQuery(db_con, qry)
+dbDisconnect(db_con)
+
+# Check timezone...None set
+tz(survey$created_datetime)[1]
+
+# Set and convert timezone
+survey = survey %>%
+  mutate(survey_datetime = with_tz(as.POSIXct(survey$survey_datetime, tz = "America/Los_Angeles"), "UTC")) %>%
+  mutate(start_datetime = with_tz(as.POSIXct(survey$start_datetime, tz = "America/Los_Angeles"), "UTC")) %>%
+  mutate(end_datetime = with_tz(as.POSIXct(survey$end_datetime, tz = "America/Los_Angeles"), "UTC")) %>%
+  mutate(created_datetime = with_tz(as.POSIXct(survey$created_datetime, tz = "America/Los_Angeles"), "UTC")) %>%
+  mutate(modified_datetime = with_tz(as.POSIXct(survey$modified_datetime, tz = "America/Los_Angeles"), "UTC"))
+
+# Check timezone again
+tz(survey$created_datetime)[1]
+
+# Write to local
+db_con = pg_con_local(dbname = "shellfish")
+DBI::dbWriteTable(db_con, "survey", survey, row.names = FALSE, append = TRUE)
+DBI::dbDisconnect(db_con)
+
+#==============================================================================
+# Write the survey_event data
+#==============================================================================
+
+# Get the missing point_location_data from prod
+se_ids = unique(prod_ids$survey_event_id)
+length(se_ids)
+se_ids = paste0(paste0("'", se_ids, "'"), collapse = ", ")
+
+# Define query
+qry = glue("select * from survey_event ",
+           "where survey_event_id in ({se_ids})")
+
+db_con = pg_con_prod(dbname = "shellfish")
+survey_event = DBI::dbGetQuery(db_con, qry)
+dbDisconnect(db_con)
+
+# Check timezone...None set
+tz(survey_event$created_datetime)[1]
+
+# Set and convert timezone
+survey_event = survey_event %>%
+  mutate(created_datetime = with_tz(as.POSIXct(survey_event$created_datetime, tz = "America/Los_Angeles"), "UTC")) %>%
+  mutate(modified_datetime = with_tz(as.POSIXct(survey_event$modified_datetime, tz = "America/Los_Angeles"), "UTC"))
+
+# Check timezone again
+tz(survey_event$created_datetime)[1]
+
+# Write to local
+db_con = pg_con_local(dbname = "shellfish")
+DBI::dbWriteTable(db_con, "survey_event", survey_event, row.names = FALSE, append = TRUE)
+DBI::dbDisconnect(db_con)
 
 #============================================================================================
 # Final check to verify the same number of rows exist in both local and production DBs
