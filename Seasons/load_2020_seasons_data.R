@@ -5,6 +5,8 @@
 #  !. Using xlsx from Kat this year...much nicer
 #  2. Keeping all beaches with actual season closures
 #     in seasons file, even if they were not surveyed.
+#  3. Eagle Creek and Pt Whitney Tidelands were both missing a trailing
+#     character for beach_id. Corrected now in xlsx.
 #  3. All uploaded on 2020-11-
 #
 # AS 2020-11-05
@@ -17,12 +19,13 @@ rm(list = ls(all.names = TRUE))
 library(remisc)
 library(dplyr)
 library(DBI)
-library(RODBC)
+library(RPostgres)
 library(glue)
 library(sf)
 library(stringi)
 library(openxlsx)
 library(lubridate)
+library(uuid)
 
 # Keep connections pane from opening
 options("connectionObserver" = NULL)
@@ -249,7 +252,7 @@ beach_chk = seayr %>%
 chk_year_poly = beach_chk %>%
   filter(is.na(not_in_year_polys) | not_in_year_polys == "yes")
 
-# Warn if any cases
+# Warn if any cases. For 2020 These were Ok. Just Dungeness, Mystery Bay, and Spencer Spit.
 if ( nrow(chk_year_poly) > 0 ) {
   cat("\nWARNING: Some beaches in seasons file are not in beach polygons for current year. Verify these are correct!\n\n")
 } else {

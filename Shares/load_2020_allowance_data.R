@@ -4,7 +4,7 @@
 # NOTES:
 #  1. Looks ready to upload.
 #
-# AS 2020-11-10
+# AS 2020-11-17
 #=================================================================
 
 # Clear workspace
@@ -194,12 +194,15 @@ no_bch_id = allyr %>%
 
 # Get rid of Joemma Beach for now. Need a polygon before I can use
 allyr = allyr %>%
+  mutate(species_group = trimws(species_group)) %>%
+  mutate(beach_status = trimws(beach_status)) %>%
   filter(!is.na(beach_id))
 
 # Stop to inspect beach names
 cat("\nStop for a second to inspect beach names!\n\n")
 
-# Inspect species_groups
+# Inspect species_groups: Result....Needed to correct trailing whitespace in Bactive.
+# Fixed in xlsx and added code to trim whitespace
 unique(allyr$species_group)
 unique(allyr$beach_status)
 
@@ -213,6 +216,14 @@ all_clam = allyr %>%
   # Pounds
   mutate(harvest_unit_type_id = "73683c44-3d97-4e75-af8c-39104988e116") %>%
   filter(!is.na(allowable_harvest))
+
+#=====================================================================================
+# Pull out each species group so separate group_ids (clam vs Oyster, etc)
+# and harvest unit types (lbs vs count) can be applied separately to each group.
+# Filter to only data in each group with actual shares and allowable harvest > 0.
+# Then combine back together into full dataset. Splitting out makes this simpler
+# and more explicit to my eyes.
+#=====================================================================================
 
 # Pull out sections for seasons table
 all_oys = allyr %>%
@@ -308,6 +319,10 @@ any(is.na(allowance_year$beach_id))
 # Check report type
 unique(allowance_year$report_type)
 
+#============================================================================================
+# Add database lookup table values for needed categories (species_group, beach_status, etc)
+# Define egress model type (will only change if model is updated). Generate report_type_id
+#============================================================================================
 
 # Add remaining columns
 allowance_table = allowance_year %>%
@@ -401,6 +416,10 @@ allowance_table = allowance_table %>%
   mutate(comment_text = trimws(comment_text)) %>%
   mutate(comment_text = if_else(comment_text == "", NA_character_, comment_text))
 
+#============================================================================================
+# Upload to database
+#============================================================================================
+
 # # Write to shellfish
 # db_con = pg_con_local(dbname = "shellfish")
 # DBI::dbWriteTable(db_con, "beach_allowance", allowance_table, row.names = FALSE, append = TRUE)
@@ -410,5 +429,20 @@ allowance_table = allowance_table %>%
 # db_con = pg_con_prod(dbname = "shellfish")
 # DBI::dbWriteTable(db_con, "beach_allowance", allowance_table, row.names = FALSE, append = TRUE)
 # DBI::dbDisconnect(db_con)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
