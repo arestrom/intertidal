@@ -1,11 +1,11 @@
 #=================================================================
-# Kat loaded beach_boundarys to prod. Need to copy to my local.
+# Kat loaded Flight data to prod. Need to copy to my local.
 # Need to make sure that uuid keys match
 #
 # NOTES:
 #  1.
 #
-# All loaded to local on 2020-11-16
+# All loaded to local on 2020-11-
 #
 # AS 2020-11-16
 #=================================================================
@@ -141,21 +141,57 @@ if ( nrow(diff_counts) > 0 ) {
 # Identify current year flight data that has been loaded to production
 #==============================================================================
 
+# Pull out and verify IDs loaded by Kat
+qry = glue::glue("select s.survey_id, se.survey_event_id, ",
+                 "pt.point_location_id ",
+                 "from survey as s ",
+                 "left join survey_event as se on s.survey_id = se.survey_id ",
+                 "left join point_location as pt on se.event_location_id = pt.point_location_id ",
+                 "where date_part('year', survey_datetime) = 2020")
 
-# STOPPED HERE !!!!!!!!!!!!!!!!!!!!!!!!!!!!
+db_con = pg_con_prod(dbname = "shellfish")
+prod_ids = DBI::dbGetQuery(db_con, qry)
+dbDisconnect(db_con)
 
-
-
-
-
-# Verify we loaded 189 records and extract uuids to delete
-qry = glue::glue("select s.survey_id, se.survey_event_id, pl. ",
-                 "from beach_boundary_history ",
-                 "where date_part('year', active_datetime) = 2020")
+# Verify no flight data for the year was loaded to my local
+qry = glue::glue("select s.survey_id, se.survey_event_id, ",
+                 "pt.point_location_id ",
+                 "from survey as s ",
+                 "left join survey_event as se on s.survey_id = se.survey_id ",
+                 "left join point_location as pt on se.event_location_id = pt.point_location_id ",
+                 "where date_part('year', survey_datetime) = 2020")
 
 db_con = pg_con_local(dbname = "shellfish")
-bb_id = DBI::dbGetQuery(db_con, qry)
+local_ids = DBI::dbGetQuery(db_con, qry)
 dbDisconnect(db_con)
+
+# Verify counts match
+if ( nrow(prod_ids) == max(diff_counts$row_diff) ) {
+  cat("\nCorrect number of rows pulled. Ok to proceed.\n\n")
+} else {
+  cat("\nWARNING: Row counts not as expected. Do not pass go!\n\n")
+}
+
+# Get the missing point_location_data from prod
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# STOPPED HERE !!!!!!!!!!!!!!!!!!!!!!!!!!!  Need to pull out all IDs uploaded for flight and LTC data
+
+
+
+
 #
 # # Pull out IDs for data needing to be deleted and collapse into a string for the next query
 # bb_id = bb_id$beach_boundary_history_id
