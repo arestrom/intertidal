@@ -5,9 +5,9 @@
 # NOTES:
 #  1.
 #
-# All loaded to local on 2020-11-16
+# All loaded to local on 2020-11-17
 #
-# AS 2020-11-16
+# AS 2020-11-17
 #=================================================================
 
 # Clear workspace
@@ -142,20 +142,13 @@ if ( nrow(diff_counts) > 0 ) {
 #==============================================================================
 
 # Pull out and verify IDs loaded by Kat
-qry = glue::glue("select beach_season_id ",
-                 "from beach_season ",
-                 "where date_part('year', season_start_datetime) = 2020 ",
-                 "and date_part('year', season_end_datetime) = 2020")
+qry = glue::glue("select beach_allowance_id ",
+                 "from beach_allowance ",
+                 "where allowance_year = 2020")
 
 db_con = pg_con_prod(dbname = "shellfish")
 prod_ids = DBI::dbGetQuery(db_con, qry)
 dbDisconnect(db_con)
-
-# Pull out and verify IDs loaded by Kat
-qry = glue::glue("select beach_season_id ",
-                 "from beach_season ",
-                 "where date_part('year', season_start_datetime) = 2020 ",
-                 "and date_part('year', season_end_datetime) = 2020")
 
 db_con = pg_con_local(dbname = "shellfish")
 local_ids = DBI::dbGetQuery(db_con, qry)
@@ -163,7 +156,7 @@ dbDisconnect(db_con)
 
 # Verify counts match: Result...None of the flight data have been uploaded to local
 prod_season_count = diff_counts %>%
-  filter(table == "beach_season") %>%
+  filter(table == "beach_allowance") %>%
   pull(row_diff)
 
 if ( nrow(prod_ids) == prod_season_count ) {
@@ -177,34 +170,32 @@ if ( nrow(prod_ids) == prod_season_count ) {
 #==============================================================================
 
 # Get the missing point_location_data from prod
-bs_ids = unique(prod_ids$beach_season_id)
-length(bs_ids)
-bs_ids = paste0(paste0("'", bs_ids, "'"), collapse = ", ")
+ba_ids = unique(prod_ids$beach_allowance_id)
+length(ba_ids)
+ba_ids = paste0(paste0("'", ba_ids, "'"), collapse = ", ")
 
 # Define query
-qry = glue("select * from beach_season ",
-           "where beach_season_id in ({bs_ids})")
+qry = glue("select * from beach_allowance ",
+           "where beach_allowance_id in ({ba_ids})")
 
 db_con = pg_con_prod(dbname = "shellfish")
-beach_season = DBI::dbGetQuery(db_con, qry)
+beach_allowance = DBI::dbGetQuery(db_con, qry)
 dbDisconnect(db_con)
 
 # Check timezone...None set
-tz(beach_season$created_datetime)[1]
+tz(beach_allowance$created_datetime)[1]
 
 # Set and convert timezone
-beach_season = beach_season %>%
-  mutate(season_start_datetime = with_tz(as.POSIXct(season_start_datetime, tz = "America/Los_Angeles"), "UTC")) %>%
-  mutate(season_end_datetime = with_tz(as.POSIXct(season_end_datetime, tz = "America/Los_Angeles"), "UTC")) %>%
+beach_allowance = beach_allowance %>%
   mutate(created_datetime = with_tz(as.POSIXct(created_datetime, tz = "America/Los_Angeles"), "UTC")) %>%
   mutate(modified_datetime = with_tz(as.POSIXct(modified_datetime, tz = "America/Los_Angeles"), "UTC"))
 
 # Check timezone again
-tz(beach_season$created_datetime)[1]
+tz(beach_allowance$created_datetime)[1]
 
 # Write to local
 db_con = pg_con_local(dbname = "shellfish")
-DBI::dbWriteTable(db_con, "beach_season", beach_season, row.names = FALSE, append = TRUE)
+DBI::dbWriteTable(db_con, "beach_allowance", beach_allowance, row.names = FALSE, append = TRUE)
 DBI::dbDisconnect(db_con)
 
 #============================================================================================
