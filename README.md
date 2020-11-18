@@ -20,24 +20,31 @@ step-by-step workflow. Steps proceed as follows:
     zero-counts)
   - **Seasons** (dates of open and closed seasons for managed beaches)
   - **Shares** (harvest shares, determined by State-Tribal agreements)
-  - **Views** (Database views, to enable visualizing spatial data in
-    QGIS)
+  - **Storage** (sql scripts for database and data views, qgis projects)
+  - **Summary** (scripts for harvest assessment and season projection)
 
-Each set of scripts typically includes notes in the header to document
-any annual changes, issues, or special circumstances. Each folder also
-includes a *data* subfolder to hold any needed raw data files. In the
-future, once a front-end to the WDFW shellfish database has been
-created, most of these scripts and subfolders will no longer be needed.
-Raw data can then be entered directly using a web-interface, or via
-automated procedures from mobile devices. Scripts to generate annual
-harvest estimates and projections for the following year are stored at
-the top level. The *Views* folder consists of SQL scripts needed to
-create the annual database views that enable visualizing spatial data in
-QGIS.
+The top folders, **Beach** through **Shares**, contains scripts to
+process and write input datasets to the central shellfish database. Each
+script typically includes notes in the header to document any annual
+changes, issues, or special circumstances. Most folders also include a
+*data* subfolder to hold any needed raw data files. In the future, once
+a front-end to the WDFW shellfish database has been created, most of
+these scripts and subfolders will no longer be needed. Raw data can then
+be entered directly using a web-interface, or via automated procedures
+from mobile devices.
+
+The **Storoge** folder contains sql scripts to create the central
+shellfish database. It also contains sql scripts to create annual
+database views that can be used to visualize spatial data for any given
+year in QGIS. This is also a good place to store QGIS project files
+(.qgz or .qgs).
+
+The **Summary** folder contains scripts to generate annual harvest
+estimates and season projections for the following year.
 
 ## Permissions
 
 In order to use the scripts in this repository you **must** first be
 granted permissions to the shellfish database. Database credentials are
-defined using the internal .Renviron file. This avoids hard-coding
+defined using the internal `.Renviron` file. This avoids hard-coding
 usernames or passwords anywhere in the scripts.
