@@ -1,8 +1,7 @@
 #================================================================================================
 # Harvest Program for 2020
 #
-#
-#  CHANGES FOR 2019:
+# CHANGES FOR 2019:
 #    1. Now have biotoxin closures (for Birch Bay) in seasons table. Needed to add
 #       code to filter by season_status_code (OR, CR)
 #    2. We should no longer write Birch Bay mean_effort_estimates to DB. Use Birch
@@ -12,7 +11,7 @@
 #    1. Effort and Catch errors for Wolfe-Shine are the means of respective values.
 #       This is not totally appropriate but workable given the situation.
 #    2. The n_obs value for Wolfe-Shine is the max of the two.
-#    3. Need to manually fix BIDN for split Potlatch beaches...again. Use only
+#    3. Needed to manually fix BIDN for split Potlatch beaches...again. Use only
 #       local shellfish DB for now, then copy to and correct the others from
 #       the main local copy.
 #
@@ -27,7 +26,7 @@
 #   5. Consider writing all existing biotoxin closure data to DB....or do it
 #      spatially????
 #
-# AS, 2020-11-16
+# AS, 2020-11-17
 #================================================================================================
 
 # Clear workspace
@@ -39,7 +38,7 @@ library(dplyr)
 library(glue)
 library(tidyr)
 library(DBI)
-library(RPostgreSQL)
+library(RPostgres)
 library(sf)
 library(lubridate)
 library(chron)
@@ -50,6 +49,7 @@ library(stringi)
 
 # Keep connections pane from opening
 options("connectionObserver" = NULL)
+options(dplyr.summarise.inform = FALSE)
 
 # Time the program
 strt = Sys.time()
@@ -114,13 +114,88 @@ pg_host <- function(host_label) {
 # Function to connect to postgres
 pg_con_local = function(dbname, port = '5432') {
   con <- dbConnect(
-    RPostgreSQL::PostgreSQL(),
+    RPostgres::Postgres(),
     host = "localhost",
     dbname = dbname,
     user = pg_user("pg_user"),
     password = pg_pw("pg_pwd_local"),
     port = port)
   con
+}
+
+# Function to connect to postgres
+pg_con_prod = function(dbname, port = '5432') {
+  con <- dbConnect(
+    RPostgres::Postgres(),
+    host = pg_host("pg_host_prod"),
+    dbname = dbname,
+    user = pg_user("pg_user"),
+    password = pg_pw("pg_pwd_prod"),
+    port = port)
+  con
+}
+
+# Function to generate dataframe of tables and row counts in database
+db_table_counts = function(db_server = "local", db = "shellfish", schema = "public") {
+  if ( db_server == "local" ) {
+    db_con = pg_con_local(dbname = db)
+  } else {
+    db_con = pg_con_prod(dbname = db)
+  }
+  # Run query
+  qry = glue("select table_name FROM information_schema.tables where table_schema = '{schema}'")
+  db_tables = DBI::dbGetQuery(db_con, qry) %>%
+    pull(table_name)
+  tabx = integer(length(db_tables))
+  get_count = function(i) {
+    tabxi = dbGetQuery(db_con, glue("select count(*) from {schema}.", db_tables[i]))
+    as.integer(tabxi$count)
+  }
+  rc = lapply(seq_along(tabx), get_count)
+  dbDisconnect(db_con)
+  rcx = as.integer(unlist(rc))
+  dtx = tibble(table = db_tables, row_count = rcx)
+  dtx = dtx %>%
+    arrange(table)
+  dtx
+}
+
+# Generate a vector of Version 4 UUIDs (RFC 4122)
+get_uuid = function(n = 1L) {
+  if (!typeof(n) %in% c("double", "integer") ) {
+    stop("n must be an integer or double")
+  }
+  uuid::UUIDgenerate(use.time = FALSE, n = n)
+}
+
+#============================================================================================
+# Verify the same number of rows exist in both local and production DBs
+#============================================================================================
+
+# Get table names and row counts
+local_row_counts = db_table_counts(db_server = "local")
+prod_row_counts = db_table_counts(db_server = "prod")
+
+# Combine to a dataframe
+compare_counts = local_row_counts %>%
+  left_join(prod_row_counts, by = "table") %>%
+  # Ignore tables that exist in local but not prod
+  filter(!table %in% c("geometry_columns", "geometry_columns", "spatial_ref_sys")) %>%
+  filter(!substr(table, 1, 10) == "beach_info") %>%
+  filter(!substr(table, 1, 12) == "flight_count") %>%
+  # Pull out and rename
+  select(table, local = row_count.x, prod = row_count.y) %>%
+  mutate(row_diff = abs(local - prod))
+
+# Inspect any differences
+diff_counts = compare_counts %>%
+  filter(!row_diff == 0L)
+
+# Output message
+if ( nrow(diff_counts) > 0 ) {
+  cat("\nWARNING: Some row counts differ. Inspect 'diff_counts'.\n\n")
+} else {
+  cat("\nRow counts are the same. Ok to proceed.\n\n")
 }
 
 #=======================================================================================
@@ -145,7 +220,7 @@ qry = glue("select distinct bb.beach_id, bb.beach_number as bidn, bb.beach_name,
            "and date_part('year', bb.inactive_datetime) = {current_year}")
 
 # Run the query
-db_con = dbConnect(odbc::odbc(), timezone = "UTC", dsn = "local_shellfish")
+db_con = pg_con_local(dbname = "shellfish")
 beach_st = st_read(db_con, query = qry)
 dbDisconnect(db_con)
 
@@ -177,7 +252,7 @@ qry = glue("select distinct b.beach_id, bb.beach_number as bidn, bb.beach_name, 
            "and date_part('year', bb.inactive_datetime) = {current_year}")
 
 # Run the query
-db_con = dbConnect(odbc::odbc(), timezone = "UTC", dsn = "local_shellfish")
+db_con = pg_con_local(dbname = "shellfish")
 beach_tide = dbGetQuery(db_con, qry)
 dbDisconnect(db_con)
 
@@ -214,7 +289,7 @@ qry = glue("select distinct ba.beach_id, bb.beach_number as bidn, b.local_beach_
            "order by b.local_beach_name")
 
 # Run the query
-db_con = dbConnect(odbc::odbc(), timezone = "UTC", dsn = "local_shellfish")
+db_con = pg_con_local(dbname = "shellfish")
 beach_allow = dbGetQuery(db_con, qry)
 dbDisconnect(db_con)
 
@@ -255,7 +330,7 @@ qry = glue("select distinct bs.beach_id, bb.beach_number as bidn, bb.beach_name,
            "order by bb.beach_name, sg.species_group_code, bs.season_start_datetime")
 
 # Run the query
-db_con = dbConnect(odbc::odbc(), timezone = "UTC", dsn = "local_shellfish")
+db_con = pg_con_local(dbname = "shellfish")
 beach_season = dbGetQuery(db_con, qry)
 dbDisconnect(db_con)
 
@@ -299,11 +374,11 @@ qry = glue("select distinct t.low_tide_datetime as tide_date, pl.location_name a
            "and date_part('year', t.low_tide_datetime) <= {current_year}")
 
 # Run the query
-db_con = dbConnect(odbc::odbc(), timezone = "UTC", dsn = "local_shellfish")
+db_con = pg_con_local(dbname = "shellfish")
 tide = dbGetQuery(db_con, qry)
 dbDisconnect(db_con)
 
-# Explicitly convert timezones
+# Explicitly convert timezones...verified result vs ClamTides
 tide = tide %>%
   mutate(tide_date = with_tz(tide_date, tzone = "America/Los_Angeles")) %>%
   mutate(tide_date = format(tide_date))
@@ -319,7 +394,7 @@ qry = glue::glue("select shellfish_management_area_id, shellfish_area_code, ",
                  "from shellfish_management_area_lut")
 
 # Run the query
-db_con = dbConnect(odbc::odbc(), timezone = "UTC", dsn = "local_shellfish")
+db_con = pg_con_local(dbname = "shellfish")
 sfma_st = st_read(db_con, query = qry)
 dbDisconnect(db_con)
 
@@ -333,7 +408,7 @@ qry = glue::glue("select management_region_id, management_region_code, ",
                  "from management_region_lut")
 
 # Run the query
-db_con = dbConnect(odbc::odbc(), timezone = "UTC", dsn = "local_shellfish")
+db_con = pg_con_local(dbname = "shellfish")
 mng_reg_st = st_read(db_con, query = qry)
 dbDisconnect(db_con)
 
@@ -354,7 +429,7 @@ qry = glue("select s.survey_datetime as survey_date, st.survey_type_description 
            "'Ground based, low tide harvester count, clam and oyster')")
 
 # Run the query
-db_con = dbConnect(odbc::odbc(), timezone = "UTC", dsn = "local_shellfish")
+db_con = pg_con_local(dbname = "shellfish")
 flight_st = st_read(db_con, query = qry)
 dbDisconnect(db_con)
 
@@ -364,7 +439,7 @@ flight_st = flight_st %>%
   mutate(count_time = with_tz(count_time, tzone = "America/Los_Angeles"))
 
 # Check hours
-sort(unique(substr(format(flight_st$survey_date), 12, 13))) # Should be ""
+sort(unique(substr(format(flight_st$survey_date), 12, 13))) # Should be "". An hour value would indicate incorrect timezone was written to DB
 sort(unique(substr(format(flight_st$count_time), 12, 13)))  # Should be range approx 7-18, plus "00"
 
 # Check some other values
@@ -478,7 +553,7 @@ qry = glue("select se.survey_event_id, s.survey_datetime as survey_date, st.surv
            "and st.survey_type_description = 'Creel survey, clam and oyster, catch per unit effort'")
 
 # Run the query
-db_con = dbConnect(odbc::odbc(), timezone = "UTC", dsn = "local_shellfish")
+db_con = pg_con_local(dbname = "shellfish")
 creel_data = dbGetQuery(db_con, qry)
 dbDisconnect(db_con)
 
@@ -498,11 +573,12 @@ qry = glue("select distinct se.survey_event_id, bb.beach_number as bidn, bb.beac
            "and st.survey_type_description = 'Creel survey, clam and oyster, catch per unit effort'")
 
 # Run the query
-db_con = dbConnect(odbc::odbc(), timezone = "UTC", dsn = "local_shellfish")
+db_con = pg_con_local(dbname = "shellfish")
 creel_beaches = dbGetQuery(db_con, qry)
 dbDisconnect(db_con)
 
 # Check for dups...If dups present...may need to change beach_names in pgAdmin....Then save.
+# If dups are present for any beach it will generate multiple extra rows and overestimate harvest
 any(duplicated(creel_beaches$survey_event_id))
 chk_dup_creel_id = creel_beaches %>%
   filter(duplicated(survey_event_id)) %>%
@@ -535,12 +611,13 @@ sort(unique(creel$bidn))         # Only Dose 270200 has creels
 chk_dose_creels = creel %>%
   filter(beach_name == "Dosewallips SP All") %>%
   arrange(survey_date, event_number)
-#
-# # Verify BIDNs
-# unique(chk_potlatch_creels$bidn)
+
+# Verify BIDNs
+unique(chk_potlatch_creels$bidn)
+unique(chk_dose_creels$bidn)
 
 #===========================================================
-# Egress and mean-use ----
+# Egress data
 #===========================================================
 
 # Get the egress values
@@ -551,12 +628,9 @@ qry = glue("select ev.egress_model_name, em.egress_model_interval as egress_inte
            "where ev.inactive_indicator = false")
 
 # Run the query
-db_con = dbConnect(odbc::odbc(), timezone = "UTC", dsn = "local_shellfish")
+db_con = pg_con_local(dbname = "shellfish")
 egress = dbGetQuery(db_con, qry)
 dbDisconnect(db_con)
-
-# # Read in mean use data from .RData file
-# load("mnuse.RData")
 
 #=======================================================================================
 # CPUE SECTION ----
@@ -568,9 +642,9 @@ dbDisconnect(db_con)
 
 # Inspect some values
 unique(creel$survey_type)
-unique(creel$harvester_type)
+unique(creel$harvester_type)    # Should all be rec-clam
 unique(creel$species)
-unique(creel$shell_condition)
+unique(creel$shell_condition)   # Both "na" and NA will be displayed. Both are correct.
 
 # Check NA values for species....29 cases. 5 in 2019, otherwise 2016 or earlier
 chk_na_species = creel %>%
@@ -669,7 +743,8 @@ sort(unique(creel$bidn))
 table(creel$species, useNA = "ifany")
 table(creel$shell_condition, useNA = "ifany")
 
-# Format creel data
+# Format creel data...We don't care about separate varnish CPUE. Maybe in the future.
+# For now, lump all other species as oth
 crls = creel %>%
   filter(harvester_type == "rec-clam") %>%
   filter(survey_type == "Creel survey, clam and oyster, catch per unit effort") %>%
@@ -764,13 +839,13 @@ unique(chk_pot$bidn)
 # Inspect remaining bidns
 sort(unique(beach_season$bidn))
 
-# Make the needed adjustments...Otherwise steps below will filter out
-# Dosewallips....THIS IS ESSENTIAL !!!!!!!!
+# Make the needed adjustments...Otherwise steps below will filter out Dosewallips seasons
+# THIS IS ESSENTIAL !!!!!!!!
 beach_season = beach_season %>%
-  # Dosewallips SP App...BIDN is 270200 in 2017 BIDN polygons...no other dose bidn
+  # Dosewallips SP App...BIDN is 270200 in 2020 BIDN polygons...no other dose bidn
   mutate(bidn = if_else(bidn == 270201L, 270200L, bidn)) %>%
-  mutate(beach_id = if_else(beach_id == "09CDC9D8-4741-46E4-810D-4F80468FBD48",
-                            stri_trans_toupper("d65072f2-21a5-4d5c-9c17-aa6c0e65ce8c"), beach_id)) %>%
+  mutate(beach_id = if_else(beach_id == "09cdc9d8-4741-46e4-810d-4f80468fbd48",
+                            "d65072f2-21a5-4d5c-9c17-aa6c0e65ce8c", beach_id)) %>%
   # Get rid of beaches where no catch estimates is needed. Get rid of Potlatch DNR to avoid two sets of
   # seasons for the same beach.
   filter(!bidn %in% c(250014L, 250300L, 270442L, 220050L))
@@ -798,7 +873,7 @@ seas = beach_season %>%
   mutate(season_start = format(season_start)) %>%
   mutate(season_end = format(season_end))
 
-# Make sure there are nine years of data for every beach                       --- Change
+# Make sure there are nine years of data for every beach
 yrs = tibble(year = seq(current_year - 8, current_year))
 
 # Get bidns and beach_names
@@ -812,7 +887,7 @@ bidns = bidns %>%
   filter(!is.na(bidn)) %>%
   distinct()
 
-# Join to years
+# Join to years...need to create full expanded grid to enable computing stats
 yrs = yrs %>%
   tidyr::expand(yrs, bidns) %>%
   arrange(beach_name, year)
@@ -1291,7 +1366,7 @@ cat("\nWARNING: Please inspect chk_delete dataset to verify deletions!\n\n")
 
 #======================================  Will need section here to select counts to delete !!! =========
 
-# Combine with flt and delete ground counts
+# Combine with flt and delete ground counts when both a ground count and aerial count exists
 flt = flt %>%
   left_join(fltsr, by = c("bidn", "survey_date", "survey_type")) %>%
   mutate(ground_drop = if_else(n_seq == 2L & survey_type == "ground",
@@ -1579,7 +1654,7 @@ if (nrow(chk_tide) > 0 ) {
   cat("\nNo duplicated tide dates. Ok to proceed.\n\n")
 }
 
-# Select the worst tide to delete
+# Select the worst tide to delete...there was one duplicate tide in 2019
 del_tide = chk_tide %>%
   filter(n_seq == 1L) %>%
   select(tide_date)
@@ -1883,7 +1958,7 @@ if (nrow(chk_status) > 0 ) {
   cat("\nAll required data present in beach_allow table. Ok to proceed.\n\n")
 }
 
-# Trim cpu to only actively managed beaches
+# Trim cpu to only actively managed beaches...so if you want catch estimates make sure beach is in allowance file
 cat("\nAll creel data from beaches not in allowance file will be deleted here!\n\n")
 cpue = cpud %>%
   left_join(beach_status, by = "bidn") %>%
@@ -1922,6 +1997,8 @@ if (nrow(cpno) > 0 ) {
 } else{
   cat("\nNo substitutions needed. Ok to proceed.\n\n")
 }
+
+# Inspect cpno to identify beaches and fltsea where substitutions are needed !!!!!
 
 # Change bidn to 270202 & fltsea to 'OO'
 sub_one = cpue %>%
@@ -2445,6 +2522,10 @@ headerStyle <- createStyle(fontSize = 12, fontColour = "#070707", halign = "left
 addStyle(wb, sheet = 1, headerStyle, rows = 1, cols = 1:num_cols, gridExpand = TRUE)
 saveWorkbook(wb, out_name, overwrite = TRUE)
 
+
+# Ran to here...looks good !!!!!!!!!!!!!!!!!!
+
+
 #============================================================================
 # Prepare data for the projection program ----
 #============================================================================
@@ -2520,25 +2601,25 @@ mean_cpue_est = mean_cpue_est %>%
          modified_datetime, modified_by)
 
 # # Dump previously uploaded values
-# db_con = dbConnect(odbc::odbc(), dsn = "local_shellfish", timezone = "UTC")
+# db_con = pg_con_local(dbname = "shellfish")
 # DBI::dbExecute(db_con, glue("delete from mean_effort_estimate where estimation_year = {current_year}"))
 # DBI::dbExecute(db_con, glue("delete from mean_cpue_estimate where estimation_year = {current_year}"))
 # DBI::dbDisconnect(db_con)
 #
 # # Write to shellfish
-# db_con = dbConnect(odbc::odbc(), dsn = "local_shellfish", timezone = "UTC")
+# db_con = pg_con_local(dbname = "shellfish")
 # DBI::dbWriteTable(db_con, "mean_effort_estimate", mean_effort_est, row.names = FALSE, append = TRUE)
 # DBI::dbWriteTable(db_con, "mean_cpue_estimate", mean_cpue_est, row.names = FALSE, append = TRUE)
 # DBI::dbDisconnect(db_con)
 #
 # # Dump previously uploaded values
-# db_con = dbConnect(odbc::odbc(), dsn = "prod_shellfish", timezone = "UTC")
+# db_con = pg_con_prod(dbname = "shellfish")
 # DBI::dbExecute(db_con, glue("delete from mean_effort_estimate where estimation_year = {current_year}"))
 # DBI::dbExecute(db_con, glue("delete from mean_cpue_estimate where estimation_year = {current_year}"))
 # DBI::dbDisconnect(db_con)
 #
 # Write to shellfish
-# db_con = dbConnect(odbc::odbc(), dsn = "prod_shellfish", timezone = "UTC")
+# db_con = pg_con_prod(dbname = "shellfish")
 # DBI::dbWriteTable(db_con, "mean_effort_estimate", mean_effort_est, row.names = FALSE, append = TRUE)
 # DBI::dbWriteTable(db_con, "mean_cpue_estimate", mean_cpue_est, row.names = FALSE, append = TRUE)
 # DBI::dbDisconnect(db_con)
