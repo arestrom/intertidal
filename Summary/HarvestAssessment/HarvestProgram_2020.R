@@ -18,13 +18,17 @@
 #  QUESTIONS:
 #    1.
 #
-#  ToDo:
+#  ToDo (general):
 # 	1. Create Report markdown...not happening this year.
 #   2. Rewrite mil_to_minutes...eliminate need for chron package
 #   3. Check if I need Ala Spit in the allowance table for 2019...Its in there
 #   4. Send chk_na_species to Melinda later...line 571
 #   5. Consider writing all existing biotoxin closure data to DB....or do it
 #      spatially????
+#
+#  ToDo (2020)
+#   1. Add code to generate cpue substitution values. See section starting
+#      at ~ line 1975
 #
 # AS, 2020-11-17
 #================================================================================================
@@ -33,7 +37,6 @@
 rm(list = ls(all.names = TRUE))
 
 # Load libraries
-library(remisc)
 library(dplyr)
 library(glue)
 library(tidyr)
@@ -2522,10 +2525,6 @@ headerStyle <- createStyle(fontSize = 12, fontColour = "#070707", halign = "left
 addStyle(wb, sheet = 1, headerStyle, rows = 1, cols = 1:num_cols, gridExpand = TRUE)
 saveWorkbook(wb, out_name, overwrite = TRUE)
 
-
-# Ran to here...looks good !!!!!!!!!!!!!!!!!!
-
-
 #============================================================================
 # Prepare data for the projection program ----
 #============================================================================
@@ -2557,7 +2556,7 @@ any(is.na(mean_effort_est$beach_id))
 
 # Add id and final fields
 mean_effort_est = mean_effort_est %>%
-  mutate(mean_effort_estimate_id = remisc::get_uuid(nrow(mean_effort_est))) %>%
+  mutate(mean_effort_estimate_id = get_uuid(nrow(mean_effort_est))) %>%
   mutate(created_datetime = with_tz(Sys.time(), "UTC")) %>%
   mutate(created_by = "stromas") %>%
   mutate(modified_datetime = with_tz(as.POSIXct(NA), "UTC")) %>%
@@ -2589,7 +2588,7 @@ any(is.na(mean_cpue_est$beach_id))
 
 # Add id and final fields
 mean_cpue_est = mean_cpue_est %>%
-  mutate(mean_cpue_estimate_id = remisc::get_uuid(nrow(mean_cpue_est))) %>%
+  mutate(mean_cpue_estimate_id = get_uuid(nrow(mean_cpue_est))) %>%
   mutate(estimation_year = as.integer(current_year)) %>%
   mutate(created_datetime = with_tz(Sys.time(), "UTC")) %>%
   mutate(created_by = "stromas") %>%
