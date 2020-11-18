@@ -2512,7 +2512,7 @@ harvest_report[] = lapply(harvest_report, set_empty)
 
 # Output with styling
 num_cols = ncol(harvest_report)
-out_name = paste0(current_year, "_", "HarvestReport.xlsx")
+out_name = glue("Summary/HarvestAssessment/data/{current_year}_", "HarvestReport.xlsx")
 wb <- createWorkbook(out_name)
 addWorksheet(wb, "HarvestReport", gridLines = TRUE)
 writeData(wb, sheet = 1, harvest_report, rowNames = FALSE)
