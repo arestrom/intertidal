@@ -171,6 +171,12 @@ get_uuid = function(n = 1L) {
   uuid::UUIDgenerate(use.time = FALSE, n = n)
 }
 
+# Convert NAs to empty character. May be useful when exporting to excel
+set_empty = function(x) {
+  x[is.na(x)] <- ""
+  x
+}
+
 #============================================================================================
 # Verify the same number of rows exist in both local and production DBs
 #============================================================================================
