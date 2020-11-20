@@ -138,7 +138,7 @@ if ( nrow(diff_counts) > 0 ) {
 }
 
 #======================================================================================
-# Dump previously updated data
+# Dump previously uploaded data
 #======================================================================================
 
 # # Inspect beach_season data for current_year that were previously loaded
