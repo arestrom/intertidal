@@ -141,9 +141,31 @@ if ( nrow(diff_counts) > 0 ) {
 # Dump previously updated data
 #======================================================================================
 
-
-
-
+# # Inspect beach_season data for current_year that were previously loaded
+# qry = glue::glue("select * from beach_season ",
+#                  "where date_part('year', season_start_datetime) = {current_year} ",
+#                  "and date_part('year', season_end_datetime) = {current_year}")
+# db_con = pg_con_local(dbname = "shellfish")
+# chk_delete = DBI::dbGetQuery(db_con, qry)
+# dbDisconnect(db_con)
+#
+# # Get vector off beach_season_ids that need to be deleted
+# bs_ids = unique(chk_delete$beach_season_id)
+# bs_ids = paste0(paste0("'", bs_ids, "'"), collapse = ", ")
+#
+# # Get rid of all beach_season data for current_year that were previously loaded to local
+# qry = glue::glue("delete from beach_season ",
+#                  "where beach_season_id in ({bs_ids})")
+# db_con = pg_con_local(dbname = "shellfish")
+# DBI::dbExecute(db_con, qry)
+# dbDisconnect(db_con)
+#
+# # Get rid of all beach_season data for current_year that were previously loaded to prod
+# qry = glue::glue("delete from beach_season ",
+#                  "where beach_season_id in ({bs_ids})")
+# db_con = pg_con_prod(dbname = "shellfish")
+# DBI::dbExecute(db_con, qry)
+# dbDisconnect(db_con)
 
 #======================================================================================
 # Get beach data
