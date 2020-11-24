@@ -2372,69 +2372,24 @@ harvest_rep = harvest %>%
 # Get bidn data with sfma and mng_region ----
 #============================================================================
 
-# # Check crs of input polygons
-# st_crs(bch_st)
-# st_crs(mng_reg_st)
-# st_crs(sfma_st)
-
 # Add beach names
 bch_info_st = bch_st
 
 # Create beach polygon centroids
-bch_point_st = bch_info_st %>%
+bch_point = bch_info_st %>%
   mutate(beach_center = st_centroid(geometry)) %>%
   select(bidn, beach_name, beach_center)
 
-# Convert to lat-lon
-bch_point_st = st_transform(bch_point_st, 4326)
-
-# Pull out lat-lons
-bch_point_st = bch_point_st %>%
-  mutate(lon = as.numeric(st_coordinates(beach_center)[,1])) %>%
-  mutate(lat = as.numeric(st_coordinates(beach_center)[,2]))
-
-# Get rid of geometry
-bch_center = tibble(bidn = bch_point_st$bidn,
-                    beach_name = bch_point_st$beach_name,
-                    lon = bch_point_st$lon,
-                    lat = bch_point_st$lat)
-
-# Check for duplicate bidns
-if (any(duplicated(bch_center$bidn))) {
-  cat("\nWARNING: Some duplicated bidns. Do not pass go!\n\n")
-} else {
-  cat("\nNo duplicated bidns. Ok to proceed.\n\n")
-}
-
-# Pull out duplicated bidns
-chk_bidn_dups = bch_center %>%
-  filter(duplicated(bidn)) %>%
-  select(bidn) %>%
-  left_join(bch_center, by = "bidn")
-
-# Get rid of second occurrance of Toandos
-bch_center = bch_center %>%
-  group_by(bidn) %>%
-  mutate(n_seq = row_number(bidn)) %>%
-  ungroup() %>%
-  filter(n_seq == 1L) %>%
-  select(- n_seq)
-
-# Recreate geometry using lat-lons
-bch_center_st = st_as_sf(bch_center, coords = c("lon", "lat"), crs = 4326)
-
-# Convert back to state plane
-bch_center_st = st_transform(bch_center_st, 2927)
+# Switch column with active geometry to beach_center
+st_geometry(bch_point) = "beach_center"
+st_crs(bch_point)$epsg
 
 # Join with mng_reg and sfma polygons
-bch_mng_st = st_join(bch_center_st, mng_reg_st)
-bch_sfma_st = st_join(bch_mng_st, sfma_st)
-
-# Pull out needed varibles
-bch_info = tibble(bidn = bch_sfma_st$bidn,
-                  beach_name = bch_sfma_st$beach_name,
-                  mng_region = bch_sfma_st$management_region_code,
-                  sfma = bch_sfma_st$shellfish_area_code)
+bch_mng_st = st_join(bch_point, mng_reg_st)
+bch_info = st_join(bch_mng_st, sfma_st) %>%
+  st_drop_geometry() %>%
+  select(bidn, beach_name, mng_region = management_region_code,
+         sfma = shellfish_area_code)
 
 # Check for duplicate bidns
 if (any(duplicated(bch_info$bidn))) {
