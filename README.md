@@ -6,22 +6,22 @@
 This repository contains scripts needed to proof, store, and analyze
 data used to generate intertidal clam and oyster harvest estimates for
 public beaches in the Puget Sound basin. Methods used to calculate
-harvest are defined in [Strom and
-Bradbury, 2007](https://wdfw.wa.gov/publications/00944).
+harvest are defined in [Strom and Bradbury,
+2007](https://wdfw.wa.gov/publications/00944).
 
 ## Folder structure
 
 The scripts are organized in a set of sequential folders to facilitate a
 step-by-step workflow. Steps proceed as follows:
 
-  - **Beach** (polygons of all beaches surveyed, for data entry)
-  - **Creel** (catch per unit effort data from creel surveys)
-  - **Flight** (counts of harvesters, includes ground-counts, and
+-   **Beach** (polygons of all beaches surveyed, for data entry)
+-   **Creel** (catch per unit effort data from creel surveys)
+-   **Flight** (counts of harvesters, includes ground-counts, and
     zero-counts)
-  - **Seasons** (dates of open and closed seasons for managed beaches)
-  - **Shares** (harvest shares, determined by State-Tribal agreements)
-  - **Storage** (sql scripts for database and data views, qgis projects)
-  - **Summary** (scripts for harvest assessment and season projection)
+-   **Seasons** (dates of open and closed seasons for managed beaches)
+-   **Shares** (harvest shares, determined by State-Tribal agreements)
+-   **Storage** (SQL scripts for database and data views, QGIS projects)
+-   **Summary** (scripts for harvest assessment and season projection)
 
 The top folders, **Beach** through **Shares**, contains scripts to
 process and write input datasets to the central shellfish database. Each
@@ -34,7 +34,7 @@ be entered directly using a web-interface, or via automated procedures
 from mobile devices.
 
 The **Storoge** folder contains sql scripts to create the central
-shellfish database. It also contains sql scripts to create annual
+shellfish database. It also contains SQL scripts to create annual
 database views that can be used to visualize spatial data for any given
 year in QGIS. This is also a good place to store QGIS project files
 (.qgz or .qgs).
